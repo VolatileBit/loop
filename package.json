@@ -1,0 +1,32 @@
+{
+  "name": "@polyweave/loop",
+  "version": "0.0.1",
+  "private": false,
+  "description": "Autonomous issue-runner: drives a coding agent through implement → verify → review cycles against a repo's markdown issue tracker, in an isolated git worktree.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "loop": "./bin/loop.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "loop": "tsx src/bin.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "tsx": "^4.22.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
+  }
+}
