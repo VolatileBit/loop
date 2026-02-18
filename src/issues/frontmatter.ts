@@ -1,15 +1,17 @@
 /**
- * Issue-file frontmatter and body-section parsing.
+ * Issue-file frontmatter and body-section parsing. Ported from
+ * scripts/loop-loop.ts with strict-TS guards (regex groups can be
+ * undefined under noUncheckedIndexedAccess).
  */
 
 export function parseFrontmatter(content: string): {
   frontmatter: Record<string, string>;
   body: string;
 } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (match === null) return { frontmatter: {}, body: content };
-  const block = match[1] as string;
-  const body = match[2] as string;
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+  const block = match?.[1];
+  const body = match?.[2];
+  if (block === undefined || body === undefined) return { frontmatter: {}, body: content };
 
   const frontmatter: Record<string, string> = {};
   for (const line of block.split('\n')) {
