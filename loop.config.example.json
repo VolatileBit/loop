@@ -1,0 +1,61 @@
+{
+  "agentCli": "claude-code",
+  "model": "auto",
+  "effort": "high",
+  "fallbackAgents": [{ "agentCli": "codex" }, { "agentCli": "cursor" }],
+  "verifyCmd": "npm run typecheck && npm test",
+  "env": { "NX_DAEMON": "false" },
+  "preflight": {
+    "cmd": "pg_isready -q",
+    "message": "start the dev database: `docker compose up -d db`"
+  },
+  "allowDeclaredVerify": true,
+  "archiveDir": "docs/archive",
+  "issuesDir": "issues",
+  "maxVerifyCycles": 3,
+  "maxReviewCycles": 3,
+  "agentTimeoutMs": 7200000,
+  "agentIdleTimeoutMs": 1200000,
+  "heartbeatIntervalMs": 60000,
+  "showThinking": true,
+  "worktreeEnabled": true,
+  "keepAwake": true,
+  "reviewSkill": "builtin",
+  "tddSkill": "builtin",
+  "commitExcludePaths": ["dist"],
+  "installCmd": "npm install",
+  "dependencyFiles": ["package.json", "package-lock.json"],
+  "prdsDir": "docs/prd",
+  "triageLabels": { "readyForAgent": "ready-for-agent", "done": "agent-done" },
+  "maxParallelRuns": 1,
+  "stages": {
+    "review": { "agentCli": "codex", "model": "gpt-5.6-sol", "effort": "xhigh" }
+  },
+  "projects": {
+    "PRD-006": {
+      "verifyCmd": "npm run typecheck && npm test -- packages/web",
+      "prd": "PRD-006",
+      "model": "opus-5",
+      "effort": "high",
+      "env": { "DATABASE_URL": "postgres://localhost/web_fixtures" },
+      "preflight": { "cmd": "curl -sf localhost:3000/health", "message": "start the web fixtures" },
+      "allowDeclaredVerify": false,
+      "usageLimits": { "weekly": "wait" }
+    }
+  },
+  "webhooks": [
+    {
+      "url": "${SLACK_WEBHOOK_URL}",
+      "format": "slack",
+      "events": ["run-completed", "issue-escalated", "usage-limit"]
+    }
+  ],
+  "usageLimits": { "session": "wait", "weekly": "stop" },
+  "agentRetries": { "attempts": 2, "initialDelayMs": 15000, "maxDelayMs": 180000 },
+  "goal": {
+    "maxIssuesPerRound": 5,
+    "roundLimit": 10,
+    "supersedeLimit": 3,
+    "usageLimits": { "session": "wait" }
+  }
+}
