@@ -23,7 +23,7 @@ import { detail, worker } from './style.js';
 
 /** Stage suffixes the pipeline appends to a `project/id` label. */
 const ISSUE_STAGE_SUFFIX =
-  /-(implement|verify|verify-fix-\d+|review-round-\d+|review-fix-\d+|complete)$/;
+  /-(implement|verify|verify-fix-\d+|review-round-\d+|review-fix-\d+|complete|escalate)$/;
 
 /**
  * Compact a pipeline stage for the prefix. Only `review-round-N` shortens: the
