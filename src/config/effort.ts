@@ -24,7 +24,7 @@ export const COPILOT_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high'
 
 /** Union for shell completion (`--effort` candidates). */
 export const EFFORT_LEVELS = [
-  ...new Set([...CLAUDE_EFFORT_LEVELS, ...CODEX_EFFORT_LEVELS]),
+  ...new Set([...CLAUDE_EFFORT_LEVELS, ...CODEX_EFFORT_LEVELS, ...COPILOT_EFFORT_LEVELS]),
 ];
 
 export function allowedEffortLevels(agentCli: AgentCli): readonly string[] | null {
