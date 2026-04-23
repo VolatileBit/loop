@@ -104,3 +104,137 @@ ${SHARED_FLAG_HELP}
 
 ${SHARED_ENV_HELP}`;
 }
+
+export function polishHelp(): string {
+  return `Usage: loop polish <project> [options]
+
+The wrap-up pass for a project, two sessions under one invocation:
+  1. fix-nits — the atomic batch over .loop/nits.md (skipped when empty)
+  2. distill  — promote the project's shared notes (.loop/notes/<project>.md)
+                and archived handoffs into the repo's tracked CONTEXT.md files,
+                shrink the notes back down, verify, commit
+
+A failed nits phase stops the polish before distilling.
+
+Options:
+  --dry-run                   Print the distill prompt without calling any agent
+${SHARED_FLAG_HELP}
+
+${SHARED_ENV_HELP}`;
+}
+
+export function archiveHelp(): string {
+  return `Usage: loop archive <project> [options]
+
+The sequel to \`loop polish\`: move a wrapped-up project's material under one
+dated folder at <archiveDir>/<date>-<project>/ — its issues, run artifacts,
+archived handoffs, project notes, and its projects.<name> config entry
+(written as loop.project.json, itself a valid partial config).
+
+Nothing is deleted. Reverting is moving the folder back. The only removals are
+directories the move left empty.
+
+Refuses when: archiveDir is unset, any issue is still runnable, the dated
+folder already exists, or another loop invocation holds the lock.
+
+Options:
+  --dry-run                   Print the exact plan without moving anything
+${SHARED_FLAG_HELP}
+
+${SHARED_ENV_HELP}`;
+}
+
+export function initHelp(): string {
+  return `Usage: loop init [options]
+
+Guided setup for loop.config.json. Detects installed agent CLIs, optionally
+runs a bounded read-only discovery session that learns the repo (candidate
+verify command — validated by executing it — plus issue/PRD directories),
+then asks each question with the findings as suggested defaults.
+
+An existing config is extended, never clobbered: keys with values are kept;
+only missing keys and new projects.<name> entries are written.
+
+With no TTY, init uses the flag-driven form (no discovery, no questions) and
+requires --verify-cmd when creating a fresh config; --interactive forces the
+guided flow even when piped (answers can be piped in up front).
+
+Options:
+  --interactive               Guided flow even without a TTY
+  --no-discovery              Skip the repo-discovery agent session
+  --agent-cli CLI             cursor|claude-code|codex|copilot
+  --verify-cmd CMD            Verify command to write
+  --issues-dir PATH           Issues directory to write
+  --prds-dir PATH             PRD docs directory to write
+  --project NAME              Add a projects.NAME entry…
+  --project-verify-cmd CMD    …with this per-project verify command
+  --project-prd PATH          …and/or this PRD path/prefix
+  --quiet                     Hide the discovery session's live stream
+  -h, --help                  Show this help`;
+}
+
+export function goalHelp(): string {
+  return `Usage: loop goal ["<goal text>" | <slug>] [options]
+
+Goal mode: no PRD, no curated backlog. Loop cycles plan → drain → evaluate —
+a fresh session plans the smallest next batch of issues, the regular pipeline
+works them (each implement session declares its own verify command), and a
+fresh session judges the goal against the observable repo state — until the
+goal is reached or needs a human. An existing slug resumes where it stopped.
+
+State lives at .loop/goals/<slug>/ (goal.md, issues/, verify declarations,
+evaluations, rounds).
+
+Options:
+  --name SLUG                 Slug for a new goal (default: derived from the text)
+  --file PATH                 Read the goal text from a file
+  --round-limit N             Max plan→drain→evaluate rounds this invocation
+  --budget DOLLARS            Stop once cumulative *reported* spend crosses this
+  --on-session-limit POLICY   wait|stop when a session usage limit hits (default: goal.usageLimits, then usageLimits)
+  --on-weekly-limit POLICY    wait|stop when a weekly usage limit hits (same fallback chain)
+  --supersede-limit N         Max replacements per escalated-issue lineage (default: goal.supersedeLimit, 3)
+  --dry-run                   Show what the next round would do without running anything
+${SHARED_FLAG_HELP}
+
+${SHARED_ENV_HELP}`;
+}
+
+export function goalsHelp(): string {
+  return `Usage: loop goals
+
+List every goal under .loop/goals/ with its status, round count, backlog size,
+and headline. Resume one with \`loop goal <slug>\`.`;
+}
+
+export function reviewHelp(): string {
+  return `Usage: loop review [--fix] [--until ID | --ids ID1,ID2 | --file PATH] [options]
+
+Run a review session for the selected issues. Issue references accept a
+qualified id (project/id, e.g. PRD-006/issue-07) or a bare local id when it is
+unambiguous repo-wide.
+
+Options:
+  --fix                       Fix blocking findings in a review↔implement loop
+  --until ID                  Review all issues up to and including ID
+  --ids ID1,ID2,...           Review explicit issue ids (comma-separated)
+  --file PATH                 Review issue ids listed in a file (one per line)
+  --dry-run                   Print review prompts without calling the agent
+${SHARED_FLAG_HELP}
+
+${SHARED_ENV_HELP}`;
+}
+
+export function listRunsHelp(): string {
+  return `Usage: loop list-runs
+
+Print every recorded run from .loop/runs.jsonl (newest last). Run artifacts
+live under .loop/runs/<project>/<timestamp>-<issue-id>/.`;
+}
+
+export function completionHelp(): string {
+  return `Usage: loop completion <bash|zsh>
+
+Print an installable shell completion script. Install with:
+  eval "$(loop completion zsh)"   # in ~/.zshrc
+  eval "$(loop completion bash)"  # in ~/.bashrc`;
+}
