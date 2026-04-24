@@ -1,6 +1,6 @@
 {
   "name": "@polyweave/loop",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": false,
   "description": "Autonomous issue-runner: drives a coding agent through implement → verify → review cycles against a repo's markdown issue tracker, in an isolated git worktree.",
   "type": "module",
