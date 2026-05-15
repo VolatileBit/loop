@@ -3,9 +3,12 @@
  * `.loop/runs.jsonl` index in the main repo root.
  */
 
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+
+import type { TriageLabels } from '../config/triage-labels.js';
 import { getHeadSha } from '../git/status.js';
+import { setIssueTriage } from '../issues/lifecycle.js';
 import { loopDir, runsIndexPath } from '../shared/paths.js';
 import { formatUsageTable, type StageUsage } from '../usage/tokens.js';
 import type { LoopCommitRecord, RunContext } from './run-context.js';
@@ -87,4 +90,44 @@ export function recordRun(
     console.log(`\n[loop] token usage for ${ctx.issue.qualifiedId}:\n${formatUsageTable(ctx.usageEntries)}`);
   }
   return record;
+}
+
+/**
+ * Terminal bookkeeping for an interrupted run: mark the issue
+ * `agentInterrupted` and record the run with an `interrupted` outcome.
+ */
+export function recordInterruptedRun(ctx: RunContext, root: string, labels: TriageLabels): void {
+  setIssueTriage(ctx.issue, 'agentInterrupted', labels);
+  recordRun(ctx, root, {
+    outcome: 'interrupted',
+    agentOk: false,
+    verifyOk: null,
+    issueDone: false,
+    stuckReason: 'interrupted',
+    verifyCmd: '',
+  });
+}
+
+/** Print every recorded run from `.loop/runs.jsonl` (the `loop list-runs` view). */
+export function listRuns(root: string): void {
+  const indexPath = runsIndexPath(root);
+  if (!existsSync(indexPath)) {
+    console.log('No runs recorded yet. Logs are written under .loop/runs/ on each loop invocation.');
+    return;
+  }
+
+  const lines = readFileSync(indexPath, 'utf8').trim().split('\n').filter(Boolean);
+  console.log(`Recorded runs (${lines.length}):\n`);
+  for (const line of lines) {
+    try {
+      const run = JSON.parse(line) as RunRecord;
+      console.log(
+        `${run.startedAt}  ${run.issueId.padEnd(24)}  ${run.outcome.padEnd(22)}  ${run.runDir}`,
+      );
+    } catch {
+      console.log(line);
+    }
+  }
+  console.log(`\nIndex: .loop/runs.jsonl`);
+  console.log(`Artifacts: .loop/runs/<project>/<timestamp>-<issue-id>/`);
 }
