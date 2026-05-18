@@ -1,11 +1,18 @@
 /**
  * Outbound notifications for the signals worth interrupting a human for — an
- * issue completing, an issue needing a human, an invocation ending, a.
+ * issue completing, an issue needing a human, an invocation ending, a fix-nits
+ * batch finishing. Deliberately no progress or heartbeat events: webhooks are
+ * for walking away from a run, not watching it.
+ *
+ * Delivery is fire-and-forget with a hard per-request timeout; failures are
+ * console warnings and never stop a run — a dead Slack hook must not stop an
+ * eight-hour backlog.
  */
 
 import type { UsageLimitDetails } from '../agent/providers/usage-limit.js';
-import type { UsageLimitPolicy } from '../config/types.js';
+import type { UsageLimitPolicy, WebhookConfig, WebhookEventName } from '../config/types.js';
 import { totalKnownCostUsd, totalTokens, formatCompactNumber, type StageUsage } from '../usage/tokens.js';
+import { buildSlackPayload } from './slack.js';
 
 export type WebhookEvent =
   | { event: 'issue-completed'; issue: { qualifiedId: string; title: string }; usage: StageUsage[] }
@@ -129,4 +136,105 @@ export function buildEventMessage(context: NotifyContext, event: WebhookEvent): 
       return `${prefix} stopped on the ${event.scope} usage limit (policy: ${event.policy})${resetNote}. Resume when the limit lifts.`;
     }
   }
+}
+
+/**
+ * `${VAR}` references resolve from the environment so tokens never live in the
+ * tracked config file. A reference to an unset variable invalidates the value
+ * (returns null) rather than sending a request with a literal `${...}` in it.
+ */
+export function expandEnv(value: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  let missing = false;
+  const expanded = value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
+    const resolved = env[name];
+    if (resolved === undefined) {
+      missing = true;
+      return '';
+    }
+    return resolved;
+  });
+  return missing ? null : expanded;
+}
+
+export type FetchLike = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal },
+) => Promise<{ ok: boolean; status: number }>;
+
+const DELIVERY_TIMEOUT_MS = 5000;
+
+async function deliver(
+  webhook: WebhookConfig,
+  context: NotifyContext,
+  event: WebhookEvent,
+  fetchImpl: FetchLike,
+): Promise<void> {
+  const url = expandEnv(webhook.url);
+  if (url === null) {
+    console.warn(
+      `[loop] warning: webhook url references an unset environment variable — skipping (${webhook.url})`,
+    );
+    return;
+  }
+
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  for (const [name, rawValue] of Object.entries(webhook.headers ?? {})) {
+    const value = expandEnv(rawValue);
+    if (value === null) {
+      console.warn(
+        `[loop] warning: webhook header "${name}" references an unset environment variable — skipping webhook`,
+      );
+      return;
+    }
+    headers[name] = value;
+  }
+
+  const message = buildEventMessage(context, event);
+  const costKnown = event.usage.some((entry) => entry.costUsd !== undefined);
+  const body =
+    webhook.format === 'slack'
+      ? JSON.stringify(buildSlackPayload(context, event, message))
+      : JSON.stringify({
+          ...event,
+          usage: summarizeUsage(event.usage),
+          costUsd: costKnown ? totalKnownCostUsd(event.usage) : null,
+          project: context.project,
+          repoRoot: context.repoRoot,
+          message,
+          timestamp: new Date().toISOString(),
+        });
+
+  try {
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers,
+      body,
+      signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      console.warn(`[loop] warning: webhook delivery failed (HTTP ${response.status}): ${url}`);
+    }
+  } catch (error) {
+    console.warn(`[loop] warning: webhook delivery failed (${(error as Error).message}): ${url}`);
+  }
+}
+
+export type Notifier = (event: WebhookEvent) => Promise<void>;
+
+/**
+ * One notifier per invocation. Sends to every configured webhook whose event
+ * filter matches; awaits deliveries (each individually time-bounded) so the
+ * process doesn't exit with notifications still in flight.
+ */
+export function createNotifier(
+  webhooks: readonly WebhookConfig[],
+  context: NotifyContext,
+  fetchImpl: FetchLike = fetch,
+): Notifier {
+  return async (event) => {
+    const matching = webhooks.filter(
+      (webhook) => !webhook.events || webhook.events.includes(event.event as WebhookEventName),
+    );
+    await Promise.all(matching.map((webhook) => deliver(webhook, context, event, fetchImpl)));
+  };
 }
