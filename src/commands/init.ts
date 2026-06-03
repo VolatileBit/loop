@@ -1,11 +1,32 @@
+/**
+ * `loop init` — guided setup. Detects installed agent CLIs, optionally runs a
+ * throwaway discovery session that learns the repo (candidate verify command —
+ * validated by actually executing it — plus PRD and issue-dir candidates),
+ * asks each config question with the findings as suggested defaults, and
+ * writes `loop.config.json`.
+ *
+ * Existing configs are extended, never clobbered: keys that already have a
+ * value are kept (and shown), only missing keys and new `projects` entries are
+ * written. Non-TTY runs use the flag-driven form (no discovery, no questions);
+ * `--interactive` forces the guided flow even when piped — answers can be
+ * piped in up front thanks to the buffered asker (src/cli/ask.ts).
+ */
 
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { runAgent, extractAgentResultText } from '../agent/run-agent.js';
+import { resolveAgentProvider } from '../agent/providers/index.js';
 import { askChoice, askWithDefault, askYesNo, createAsker, type Asker } from '../cli/ask.js';
 import type { InitFlags } from '../cli/args.js';
-import { DEFAULT_CONFIG } from '../config/load-config.js';
-import { type AgentCli } from '../config/types.js';
+import {
+  CONFIG_FILE_NAME,
+  DEFAULT_CONFIG,
+  LOCAL_CONFIG_FILE_NAME,
+  loadConfig,
+} from '../config/load-config.js';
+import { AGENT_CLIS, type AgentCli } from '../config/types.js';
+import { isGitRepository } from '../git/status.js';
 import { failStop } from '../interrupt/shutdown.js';
 import { resolveRoot } from '../shared/paths.js';
 import { shell } from '../shared/shell.js';
@@ -53,6 +74,102 @@ export type InitAnswers = {
   project: { name: string; verifyCmd?: string; prd?: string } | null;
 };
 
+export type MergeOutcome = {
+  config: Record<string, unknown>;
+  written: string[];
+  kept: string[];
+};
+
+/**
+ * Fold answers into the existing raw config: existing values always win (and
+ * are reported as kept); a `projects` entry may only be added when the name is
+ * new. Throws when asked to add a project entry that already exists — init
+ * refuses to overwrite an existing feature.
+ */
+export function mergeInitConfig(
+  existing: Record<string, unknown>,
+  answers: InitAnswers,
+  /** The tracked config merged with any machine-local overlay; defaults to `existing`. */
+  effective: Record<string, unknown> = existing,
+): MergeOutcome {
+  const config: Record<string, unknown> = { ...existing };
+  const written: string[] = [];
+  const kept: string[] = [];
+
+  const set = (key: string, value: unknown): void => {
+    if (value === null || value === undefined) return;
+    // Judged against the merged view so a locally-set key is not duplicated
+    // into the tracked file, where the two would then disagree.
+    if (effective[key] !== undefined) {
+      kept.push(key);
+      return;
+    }
+    config[key] = value;
+    written.push(key);
+  };
+
+  set('agentCli', answers.agentCli);
+  set('verifyCmd', answers.verifyCmd);
+  set('issuesDir', answers.issuesDir === 'issues' ? null : answers.issuesDir);
+  set('prdsDir', answers.prdsDir);
+
+  if (answers.project) {
+    const projects =
+      typeof config.projects === 'object' && config.projects !== null && !Array.isArray(config.projects)
+        ? { ...(config.projects as Record<string, unknown>) }
+        : {};
+    const effectiveProjects =
+      typeof effective.projects === 'object' && effective.projects !== null && !Array.isArray(effective.projects)
+        ? (effective.projects as Record<string, unknown>)
+        : {};
+    if (effectiveProjects[answers.project.name] !== undefined) {
+      throw new Error(
+        `projects.${answers.project.name} already exists in ${CONFIG_FILE_NAME} — init never overwrites an existing project entry; edit it directly.`,
+      );
+    }
+    projects[answers.project.name] = {
+      ...(answers.project.verifyCmd ? { verifyCmd: answers.project.verifyCmd } : {}),
+      ...(answers.project.prd ? { prd: answers.project.prd } : {}),
+    };
+    config.projects = projects;
+    written.push(`projects.${answers.project.name}`);
+  }
+
+  return { config, written, kept };
+}
+
+/**
+ * Ensure loop's runtime state is gitignored. `.loop/` and the machine-local
+ * config overlay are documented as gitignored and warned about at setup, but
+ * were never actually added — and an unignored `.loop/` puts run artifacts in
+ * the diff, where a later review-fix session "cleaning up" stray files can
+ * delete the live run directory mid-run.
+ *
+ * Writes to `.gitignore` rather than `.git/info/exclude`, since this is a
+ * repo-wide fact, and only for paths git does not already ignore by any
+ * mechanism. The edit is announced, never silent.
+ */
+export function ensureRuntimeStateIgnored(root: string): string[] {
+  const candidates = ['.loop/', LOCAL_CONFIG_FILE_NAME];
+  const missing = candidates.filter(
+    (entry) => !shell(`git check-ignore -q ${JSON.stringify(entry)}`, root).ok,
+  );
+  if (missing.length === 0) return [];
+
+  const gitignorePath = path.join(root, '.gitignore');
+  const existingText = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+  const separator = existingText === '' || existingText.endsWith('\n') ? '' : '\n';
+  writeFileSync(
+    gitignorePath,
+    `${existingText}${separator}\n# loop runtime state\n${missing.join('\n')}\n`,
+  );
+  return missing;
+}
+
+function detectInstalledAgents(): AgentCli[] {
+  return AGENT_CLIS.filter((cli) => shell(`command -v ${resolveAgentProvider(cli).binaryName}`).ok);
+}
+
 const DISCOVERY_PROMPT = [
   'Inspect this repository to help set up an autonomous issue-runner. **Read-only**: do not create, modify, or delete anything, and do not run package installs.',
   '',
@@ -72,6 +189,87 @@ const DISCOVERY_PROMPT = [
 /** Discovery session timeouts — a repo survey must not get 2 hours. */
 const DISCOVERY_WALL_MS = 15 * 60 * 1000;
 const DISCOVERY_IDLE_MS = 5 * 60 * 1000;
+
+export async function initCommand(flags: InitFlags): Promise<never> {
+  const root = resolveRoot();
+  if (!isGitRepository(root)) {
+    failStop('cwd must be a git repository', {
+      details: [`loop operates on the repository at the current working directory (${root}).`],
+    });
+  }
+
+  const configPath = path.join(root, CONFIG_FILE_NAME);
+  const readJson = (filePath: string, fileName: string): Record<string, unknown> => {
+    if (!existsSync(filePath)) return {};
+    try {
+      return JSON.parse(readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+    } catch (error) {
+      failStop(`${fileName} exists but is not valid JSON`, {
+        details: [String(error instanceof Error ? error.message : error), 'Fix or remove it, then re-run loop init.'],
+      });
+    }
+  };
+
+  // Written into the tracked config, but "already answered" is judged against
+  // the *merged* view — a key set only in the machine-local overlay must not be
+  // written again here, or the two files would disagree.
+  const existing = readJson(configPath, CONFIG_FILE_NAME);
+  const localPath = path.join(root, LOCAL_CONFIG_FILE_NAME);
+  const local = readJson(localPath, LOCAL_CONFIG_FILE_NAME);
+  const effective = { ...existing, ...local };
+  if (existsSync(configPath)) {
+    console.log(`[loop] ${CONFIG_FILE_NAME} exists — init will only fill missing keys and add new projects entries.`);
+  }
+  if (existsSync(localPath)) {
+    console.log(`[loop] ${LOCAL_CONFIG_FILE_NAME} exists — keys it sets are treated as already answered.`);
+  }
+
+  const installed = detectInstalledAgents();
+  if (installed.length === 0) {
+    failStop('no agent CLI found on PATH', {
+      details: [`Install at least one of: ${AGENT_CLIS.map((cli) => resolveAgentProvider(cli).binaryName).join(', ')}.`],
+    });
+  }
+  console.log(`[loop] installed agent CLIs: ${installed.join(', ')}`);
+
+  const interactive = flags.interactive || (process.stdin.isTTY === true && process.stdout.isTTY === true);
+
+  const answers = interactive
+    ? await gatherInteractive(flags, effective, installed)
+    : gatherFromFlags(flags, effective, installed);
+
+  let merged: MergeOutcome;
+  try {
+    merged = mergeInitConfig(existing, answers, effective);
+  } catch (error) {
+    failStop('init cannot write the config', {
+      details: [String(error instanceof Error ? error.message : error)],
+    });
+  }
+
+  writeFileSync(configPath, `${JSON.stringify(merged.config, null, 2)}\n`);
+  // Confirm the written file round-trips through the real loader.
+  try {
+    loadConfig(root);
+  } catch (error) {
+    failStop(`${CONFIG_FILE_NAME} was written but fails validation`, {
+      details: [String(error instanceof Error ? error.message : error)],
+    });
+  }
+
+  if (merged.kept.length > 0) console.log(`[loop] kept existing: ${merged.kept.join(', ')}`);
+  console.log(
+    merged.written.length > 0
+      ? `[loop] wrote ${CONFIG_FILE_NAME}: ${merged.written.join(', ')}`
+      : `[loop] ${CONFIG_FILE_NAME} already had every answered key — nothing to write.`,
+  );
+  const ignored = ensureRuntimeStateIgnored(root);
+  if (ignored.length > 0) {
+    console.log(`[loop] added to .gitignore: ${ignored.join(', ')} (loop's runtime state must not enter the diff).`);
+  }
+  console.log('[loop] next: create issues under issues/<project>/, then `loop run --dry-run`.');
+  process.exit(0);
+}
 
 function gatherFromFlags(
   flags: InitFlags,
