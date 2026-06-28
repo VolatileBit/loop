@@ -1,6 +1,19 @@
 /**
  * Goal-mode domain: slugs, the goal folder layout, persistent round state,
  * and the declared-verify contract's file plumbing.
+ *
+ * A goal lives at `.loop/goals/<slug>/`:
+ *
+ *   goal.md                 — the goal text (the spec every session reads in place of a PRD)
+ *   issues/<slug>/NN-*.md   — agent-generated backlog; the goal slug doubles as the project
+ *                             folder name, so the regular discovery/pipeline machinery applies
+ *   verify/<issue-id>.cmd   — the verify command each implement session declared (one line)
+ *   VERIFY.md               — shared verify knowledge, appended by sessions
+ *   evaluations/round-N.md  — each round's evaluation verdict text
+ *   state.json              — round counter, status, supersede lineage
+ *
+ * Everything here is main-repo-root `.loop/` state — outside any worktree, so
+ * session writes to it never retract in-session verify evidence.
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -62,6 +75,17 @@ export function goalPaths(root: string, slug: string): GoalPaths {
     evaluationsDir: path.join(dir, 'evaluations'),
     statePath: path.join(dir, 'state.json'),
   };
+}
+
+/** Derive a filesystem-safe slug from goal text (lowercase words joined by dashes, capped). */
+export function slugifyGoal(text: string): string {
+  const slug = text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/, '');
+  return slug || 'goal';
 }
 
 export function goalExists(root: string, slug: string): boolean {
