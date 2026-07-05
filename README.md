@@ -629,3 +629,35 @@ triage: ready-for-agent
 ---
 ```
 
+## Operator smoke tests
+
+Gap smoke (live agents; optional):
+
+```bash
+node scripts/gap-live-smoke.mjs parallel
+```
+
+### Gap validation (scratch fixtures)
+
+Operator-facing live smokes live under `/tmp` and never touch this repo's issue corpus:
+
+```bash
+node loop/scripts/gap-live-smoke.mjs parallel      # --max-parallel-runs 2, per-issue verify
+node loop/scripts/gap-live-smoke.mjs review-fix   # loop review --fix on pre-broken artifact
+node loop/scripts/gap-live-smoke.mjs interrupt      # non-TTY SIGINT harness (see caveat below)
+```
+
+Artifacts land in the rolling worktree (`<fixture>-loop/`), not the bare fixture root.
+
+**Interrupt caveat:** the ESC gestures require an interactive TTY (raw-mode stdin), so neither the graceful stop nor the second-press park is reachable without one. Piped/backgrounded runs fall back to SIGINT×2 for force-stop; spawning `loop` as a child process may not deliver those signals the same way an attached terminal does — rely on `loop/src/interrupt/*.test.ts` for deterministic coverage of the key handling, and on the parking tests in `src/pipeline/run-issue.test.ts` (which drive the boundary check directly) for what a park actually does.
+
+**Usage limits:** Quota exhaustion is classified via stderr/result heuristics, and the reset time is parsed from the CLI's own message when present (`src/agent/providers/usage-limit.ts`); the wait-and-resume policy lives in `src/usage/limit-wait.ts` + `src/commands/run.ts`. Live exhaustion is environment-dependent; tests inject limit text and fake clocks instead of burning real quota.
+
+### Live E2E (real agent CLIs)
+
+`npm run test:e2e` (config: `vitest.e2e.config.ts`, tests: `e2e/agent-clis.test.ts`) drives `loop run --once` with **each real agent CLI** — claude, codex, cursor, copilot — against a throwaway fixture repo with one deliberately trivial issue ("write `hello` into greeting.txt"). It exists to catch CLI updates breaking the provider integrations: spawn flags, stream parsing, verdict extraction, usage reporting (the usage-table assertion is the canary for a changed output format). Never part of `npm test`; it spends real quota (a few short sessions per CLI) and needs each CLI installed and authenticated — missing CLIs are skipped with a warning.
+
+- `LOOP_E2E_CLIS=claude-code,codex npm run test:e2e` — narrow the matrix.
+- `LOOP_E2E_KEEP=1` — keep the fixture repos for inspection instead of deleting them.
+
+Source layout (DDD-style): `src/config/`, `src/issues/`, `src/agent/`, `src/verify/`, `src/review/`, `src/git/`, `src/worktree/`, `src/notify/`, `src/skills/`, `src/commands/`, `src/cli/`, etc.
