@@ -1,8 +1,9 @@
 {
   "name": "@polyweave/loop",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": false,
   "description": "Autonomous issue-runner: drives a coding agent through implement → verify → review cycles against a repo's markdown issue tracker, in an isolated git worktree.",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -20,7 +21,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "smoke:gap": "node scripts/gap-live-smoke.mjs"
   },
   "dependencies": {
     "tsx": "^4.22.3"
