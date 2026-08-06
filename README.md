@@ -30,7 +30,7 @@ It runs unattended — overnight, over a weekend, or while you're in meetings.
 - **Nothing merges unchecked.** Your own test command is the gate. A separate review agent reads the diff.
 - **It works in a sandbox.** All work happens in a separate git worktree, never your checked-out branch. Nothing is ever pushed.
 - **It knows when to stop.** Stuck tasks are labelled and left for you, with notes on what it tried.
-- **Costs are capped.** Set a dollar limit. It stops claiming new work when hit.
+- **Hit your usage limit? It waits.** Sleeps until your quota resets, then picks up exactly where it stopped. A small plan and a big backlog still finish — it just takes longer.
 
 ## Requirements
 
@@ -107,14 +107,15 @@ loop run
 ## What a run looks like
 
 ```
-11:29:57 [01|implement] starting claude-code session (model=claude-opus-5)
-11:29:57 [01|implement] │ I'll start by reading the issue file and the shared notes.
-11:29:58 [01|implement] │ → read: src/cli/args.ts
-11:31:02 [01|implement] └ 8m41s · $6.11 · 7.6M tokens
-11:31:02 [01|verify]    npm test — passed
-11:34:19 [01|review]    VERDICT: nits-only
-11:34:21 [01|complete]  committed · issue-01 done
+11:29:57 [16|implement] starting claude-code session (model=claude-opus-5; effort=high)
+11:29:57 [16|implement] │ I'll start by reading the issue file and the shared notes.
+11:29:57                │ Nothing in the debrief covers the export path yet.
+11:29:58 [16|implement] │ → read: src/apps/data-export/AGENT.md
+11:31:02 [16|implement] └ 8m41s · $6.11 · 7.6M tokens · peak context 171.2k
+11:31:02 [loop] 3/5 workers active
 ```
+
+The `│` marks the agent talking; loop's own lines break out of it. Each line is colour-keyed to its task, so a long run is scannable.
 
 Everything is also written to `.loop/logs/`, so closing the terminal loses nothing.
 
@@ -126,7 +127,6 @@ Everything is also written to `.loop/logs/`, so closing the terminal loses nothi
 | `loop run --once` | Do one task, then stop |
 | `loop run --dry-run` | Show what it would pick, change nothing |
 | `loop run <project>` | Only work tasks in one folder |
-| `loop run --budget 50` | Stop claiming new work past $50 |
 | `loop goal "..."` | No backlog — describe an outcome, loop writes its own tasks (see [Goal mode](#goal-mode)) |
 | `loop review --fix` | Re-review (and fix) tasks already done |
 | `loop fix-nits` | Clear the backlog of minor review comments in one pass |
@@ -137,6 +137,39 @@ Everything is also written to `.loop/logs/`, so closing the terminal loses nothi
 | `loop completion zsh` | Tab completion (`bash` also supported) |
 
 Add `--help` to any of them for the full flag list.
+
+## Running out of quota
+
+Hitting a usage limit doesn't end the run. By default loop waits for the reset, then carries on.
+
+```
+17:42:10 [loop] usage limit (session) hit — waiting until 6/8/2026, 9:00:00 PM
+                for the reset, then resuming. The machine is kept awake for the
+                wait. Press ESC to stop instead.
+17:42:10 [loop] PRD-006/issue-12 paused on the usage limit — it will be
+                re-claimed after the reset.
+21:01:12 [12|implement] starting claude-code session (model=claude-opus-5)
+```
+
+This is the difference between a backlog finishing overnight and a backlog stopping at 6pm. Especially useful on smaller plans.
+
+What it does while waiting:
+
+- **Reads the reset time** from the provider's own message. Can't find one, it re-checks every 15 minutes.
+- **Keeps the machine awake** on macOS, so it's actually there to resume.
+- **Resumes the same session** rather than starting over, so the agent doesn't re-derive work it already did.
+- **Keeps your place.** The interrupted task holds its checkpoint and continues from that stage.
+- **ESC cancels the wait** if you'd rather stop.
+
+Configure it per limit window:
+
+```json
+{ "usageLimits": { "session": "wait", "weekly": "stop" } }
+```
+
+Those are the defaults — wait out a short session limit, but stop on a weekly one rather than sleeping for days. Set either to `"stop"` to end the run instead (exit code 2, plus a webhook if you've configured one).
+
+Got accounts on more than one provider? Loop can switch instead of waiting — see [falling back](#configuration).
 
 ## Stopping a run
 
@@ -355,6 +388,26 @@ Events: `issue-completed`, `issue-escalated`, `run-completed`, `fix-nits-complet
 </details>
 
 <details>
+<summary><b>Spend cap (experimental — Claude Code only)</b></summary>
+
+```bash
+loop run --budget 50
+```
+
+Stops claiming new work once reported spend passes $50. An in-flight task always finishes, so the cap is a floor on where it stops, not a hard ceiling.
+
+⚠️ **Only `claude-code` reports what a session cost.** `codex`, `cursor`, and `copilot` report nothing, so their spend is invisible to the cap — with those, `--budget` will never trigger no matter how much you spend. Loop warns at startup when a capped run uses a CLI it can't see the cost of:
+
+```
+[loop] warning: --budget only counts cost the agent CLI reports; codex, cursor
+sessions report none, so their spend is invisible to the cap.
+```
+
+Treat it as a safety net on Claude Code runs, not as a spend control you can rely on. For everything else, bound the run with `--once`, `--max-iterations`, or `--round-limit` instead.
+
+</details>
+
+<details>
 <summary><b>Custom task labels</b></summary>
 
 If your team already says `ready-for-agent` instead of `ready`:
@@ -390,7 +443,7 @@ Point them at your own skill instead if you have one: `"reviewSkill": "/review-w
 No backlog? Describe the outcome instead.
 
 ```bash
-loop goal "Migrate every API route to the new gateway client" --budget 50
+loop goal "Migrate every API route to the new gateway client" --round-limit 5
 loop goals                    # list goals and their progress
 loop goal gateway-migration   # resume where it stopped
 ```
@@ -399,7 +452,7 @@ Loop cycles **plan → work → evaluate**: it writes its own tasks, works throu
 
 Since there's no test command defined up front, each task picks and declares its own — and the reviewer checks that choice is honest.
 
-Always give it `--budget` or `--round-limit`. Loop warns if you give neither.
+**Always bound it.** There's no default round limit, so an open-ended goal can keep planning rounds indefinitely. Use `--round-limit`. Loop warns if you give it nothing to stop at.
 
 ## Safety
 
