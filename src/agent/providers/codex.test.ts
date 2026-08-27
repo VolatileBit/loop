@@ -208,4 +208,21 @@ describe('session resume', () => {
     expect(args!.slice(0, 4)).toEqual(['exec', 'resume', 't-42', 'continue']);
     expect(args).toContain('--json');
   });
+
+  it('carries the sandbox policy as -c, because `exec resume` rejects --sandbox', () => {
+    const provider = createCodexProvider();
+    const args = provider.buildResumeArgs({
+      prompt: 'continue',
+      model: 'auto',
+      effort: null,
+      cwd: '/repo',
+      sessionId: 't-42',
+    });
+    // `codex exec resume` accepts no --sandbox flag; passing one makes the CLI
+    // exit before the session starts, which turns every usage-limit retry into
+    // an agent failure.
+    expect(args).not.toContain('--sandbox');
+    expect(args).toContain('sandbox_mode="workspace-write"');
+    expect(args).toContain('approval_policy=never');
+  });
 });

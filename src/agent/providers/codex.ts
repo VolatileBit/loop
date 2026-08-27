@@ -93,9 +93,11 @@ export function createCodexProvider(): AgentProvider {
       return args;
     },
 
-    // `codex exec resume <id> <prompt>` with the same sandbox/json flags.
+    // `codex exec resume <id> <prompt>` with the same sandbox/json policy.
+    // `exec resume` has no `--sandbox` flag — passing one aborts the process
+    // before it starts — so the identical policy goes through `-c` instead.
     buildResumeArgs({ prompt, model, effort, sessionId }) {
-      const args = ['exec', 'resume', sessionId, prompt, '--sandbox', 'workspace-write', '-c', 'approval_policy=never', '--json'];
+      const args = ['exec', 'resume', sessionId, prompt, '-c', 'sandbox_mode="workspace-write"', '-c', 'approval_policy=never', '--json'];
       if (model && model !== 'auto') args.push('-m', model);
       if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
       return args;
