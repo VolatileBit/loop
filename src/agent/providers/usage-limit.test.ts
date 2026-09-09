@@ -88,6 +88,31 @@ describe('parseUsageLimitDetails', () => {
     expect(details.resetsAtMs! - NOW).toBeLessThanOrEqual(24 * 3_600_000);
   });
 
+  it("reads codex's dated reset time exactly, without guessing a roll-forward", () => {
+    // Verbatim from a codex usage-limit payload.
+    const text =
+      'usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit ' +
+      'https://chatgpt.com/codex/settings/usage to purchase more credits or ' +
+      'try again at Sep 9th, 2026 1:53 AM.';
+    const now = new Date(2026, 8, 8, 22, 1, 0).getTime();
+    expect(parseUsageLimitDetails(text, now).resetsAtMs).toBe(
+      new Date(2026, 8, 9, 1, 53, 0).getTime(),
+    );
+  });
+
+  it('ignores a dated reset time that has already passed, so loop probes instead', () => {
+    const text = 'try again at Sep 8th, 2026 1:53 AM.';
+    const now = new Date(2026, 8, 8, 22, 1, 0).getTime();
+    expect(parseUsageLimitDetails(text, now).resetsAtMs).toBeNull();
+  });
+
+  it("reads codex's bare wall-clock reset time as the next occurrence", () => {
+    const now = new Date(2026, 8, 9, 0, 30, 0).getTime();
+    expect(parseUsageLimitDetails('try again at 4:57 AM.', now).resetsAtMs).toBe(
+      new Date(2026, 8, 9, 4, 57, 0).getTime(),
+    );
+  });
+
   it('returns a null reset time when nothing parseable is present', () => {
     expect(parseUsageLimitDetails('usage limit reached, come back later', NOW).resetsAtMs).toBeNull();
   });

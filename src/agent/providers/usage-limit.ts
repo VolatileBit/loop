@@ -38,6 +38,11 @@ const DURATION_UNIT_MS: Record<string, number> = {
   day: 86_400_000,
 };
 
+const MONTHS: Record<string, number> = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
+
 /** The next occurrence of a local wall-clock time like "3am" / "11:30pm", strictly after `now`. */
 function nextLocalTimeMs(hour12: number, minute: number, meridiem: string, nowMs: number): number {
   const hour = (hour12 % 12) + (meridiem.toLowerCase() === 'pm' ? 12 : 0);
@@ -80,8 +85,25 @@ export function parseUsageLimitDetails(text: string, nowMs: number = Date.now())
     return { scope, resetsAtMs: nowMs + Number(relative[1]) * DURATION_UNIT_MS[relative[2]!.toLowerCase()]! };
   }
 
-  // "resets 3am" / "resets at 11:30pm" — local wall-clock time.
-  const wallClock = text.match(/resets?\s*(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  // Codex: "try again at Sep 9th, 2026 1:53 AM." — an explicit local date and
+  // time. Tried before the bare wall-clock branch because it is unambiguous:
+  // no roll-forward guess is involved. Rejected if it lands in the past, which
+  // means the text is stale and probing is safer than sleeping on it.
+  const datedClock = text.match(
+    /(?:reset|retry|try again)[^.\n]{0,40}?\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})[,\s]+(\d{1,2}):(\d{2})\s*(am|pm)/i,
+  );
+  if (datedClock) {
+    const [, month, day, year, hour12, minute, meridiem] = datedClock;
+    const hour = (Number(hour12) % 12) + (meridiem!.toLowerCase() === 'pm' ? 12 : 0);
+    const parsed = new Date(
+      Number(year), MONTHS[month!.toLowerCase()]!, Number(day), hour, Number(minute), 0, 0,
+    ).getTime();
+    if (parsed > nowMs) return { scope, resetsAtMs: parsed };
+  }
+
+  // "resets 3am" / "resets at 11:30pm" / codex's "try again at 4:57 AM" —
+  // a bare local wall-clock time, resolved to its next occurrence.
+  const wallClock = text.match(/(?:resets?|try again)\s*(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
   if (wallClock) {
     return {
       scope,
