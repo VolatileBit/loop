@@ -470,6 +470,7 @@ async function runAgentAttempt(
     model: settings.model,
     effort: settings.effort,
     cwd,
+    sandboxMode: options.config.sandboxMode,
     sandboxNetworkAccess: options.config.sandboxNetworkAccess,
   };
   // Resumed sessions get told they were interrupted, plus the full original

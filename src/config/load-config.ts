@@ -65,6 +65,7 @@ export const DEFAULT_CONFIG: LoopConfig = {
   reviewSkill: null,
   tddSkill: null,
   commitExcludePaths: [],
+  sandboxMode: 'workspace-write',
   sandboxNetworkAccess: false,
   installCmd: null,
   dependencyFiles: ['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'],
@@ -127,6 +128,7 @@ const KNOWN_KEYS = new Set<string>([
   'reviewSkill',
   'tddSkill',
   'commitExcludePaths',
+  'sandboxMode',
   'sandboxNetworkAccess',
   'installCmd',
   'dependencyFiles',
@@ -574,6 +576,14 @@ function readConfigFile(root: string): FileConfig {
   if (tddSkill !== undefined) config.tddSkill = tddSkill;
   const commitExcludePaths = expectStringArray(raw, 'commitExcludePaths');
   if (commitExcludePaths !== undefined) config.commitExcludePaths = commitExcludePaths;
+  const sandboxMode = expectString(raw, 'sandboxMode');
+  if (sandboxMode !== undefined) {
+    const modes = ['read-only', 'workspace-write', 'danger-full-access'] as const;
+    if (!(modes as readonly string[]).includes(sandboxMode)) {
+      throw configError(`"sandboxMode" must be one of ${modes.join(', ')}`);
+    }
+    config.sandboxMode = sandboxMode as LoopConfig['sandboxMode'];
+  }
   const sandboxNetworkAccess = expectBoolean(raw, 'sandboxNetworkAccess');
   if (sandboxNetworkAccess !== undefined) config.sandboxNetworkAccess = sandboxNetworkAccess;
   const installCmd = expectString(raw, 'installCmd');

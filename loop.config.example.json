@@ -23,6 +23,7 @@
   "reviewSkill": "builtin",
   "tddSkill": "builtin",
   "commitExcludePaths": ["dist"],
+  "sandboxMode": "workspace-write",
   "sandboxNetworkAccess": false,
   "installCmd": "npm install",
   "dependencyFiles": ["package.json", "package-lock.json"],

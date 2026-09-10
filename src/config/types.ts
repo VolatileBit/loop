@@ -202,14 +202,31 @@ export type LoopConfig = {
   /** Pathspecs excluded from staging ("stage everything, exclude these"). Empty = stage everything. */
   commitExcludePaths: string[];
   /**
-   * Let sandboxed agent commands reach the network, loopback included.
-   * Default false. A `workspace-write` sandbox otherwise blocks Docker, every
-   * `localhost` connection and any port bind, so an agent cannot start
-   * MongoDB, run a Mongo-backed suite, boot Vite or launch Chromium — it can
-   * only report that it was unable to verify, and the loop then declines to
-   * accept coverage nothing proved. Enable it when the repo's gate needs
-   * services, understanding that it widens what agent-generated commands can
-   * reach.
+   * How much the sandbox running agent commands may reach. Ordered by
+   * privilege, and what each buys measured against a Mongo + Vite + Chromium
+   * gate:
+   *
+   * - `read-only` — inspection only; an agent cannot even write the workspace.
+   * - `workspace-write` (default) — writes the workspace, but blocks Docker,
+   *   every `localhost` connection and any port bind. An agent cannot start
+   *   MongoDB, run a Mongo-backed suite, boot Vite or launch Chromium; it can
+   *   only report that verification was impossible, and loop then declines to
+   *   accept coverage nothing proved.
+   * - `workspace-write` **plus `sandboxNetworkAccess`** — adds Docker and
+   *   loopback. Enough for service-backed unit and HTTP suites.
+   * - `danger-full-access` — no sandbox. Additionally allows launching a
+   *   browser (Chromium needs Mach-port registration, which seatbelt refuses
+   *   at every lower level) and writing `.git`, so an agent can commit its own
+   *   work instead of relying on loop's fallback commit.
+   *
+   * Raise this only as far as the repo's gate actually needs: at
+   * `danger-full-access` agent-generated commands run unsandboxed.
+   */
+  sandboxMode: 'read-only' | 'workspace-write' | 'danger-full-access';
+  /**
+   * Add network and Docker reach to a `workspace-write` sandbox. Ignored at the
+   * other modes: `read-only` has no use for it and `danger-full-access`
+   * already implies it.
    */
   sandboxNetworkAccess: boolean;
   /** Dependency install command for worktree sync. `null` = auto-install disabled. */

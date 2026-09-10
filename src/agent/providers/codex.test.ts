@@ -200,6 +200,34 @@ describe('sandbox network access', () => {
     expect(provider.buildArgs(base).join(' ')).not.toContain('network_access');
   });
 
+  it('defaults to workspace-write', () => {
+    expect(provider.buildArgs(base)).toEqual(
+      expect.arrayContaining(['--sandbox', 'workspace-write']),
+    );
+  });
+
+  it('passes danger-full-access through, and does not add the redundant network flag', () => {
+    // danger-full-access is the only level that permits launching Chromium
+    // (Mach-port registration) or writing `.git`; it already implies network.
+    const args = provider.buildArgs({
+      ...base,
+      sandboxMode: 'danger-full-access',
+      sandboxNetworkAccess: true,
+    });
+    expect(args).toEqual(expect.arrayContaining(['--sandbox', 'danger-full-access']));
+    expect(args.join(' ')).not.toContain('network_access');
+  });
+
+  it('carries the mode across a resume, where --sandbox is rejected', () => {
+    const args = provider.buildResumeArgs({
+      ...base,
+      sessionId: 't-1',
+      sandboxMode: 'danger-full-access',
+    });
+    expect(args).toEqual(expect.arrayContaining(['-c', 'sandbox_mode="danger-full-access"']));
+    expect(args).not.toContain('--sandbox');
+  });
+
   it('opens the workspace-write sandbox to the network when enabled', () => {
     // Without this a workspace-write sandbox blocks Docker, every localhost
     // connection and any port bind, so an agent cannot run a Mongo-backed

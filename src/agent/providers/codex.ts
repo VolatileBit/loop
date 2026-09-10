@@ -166,9 +166,14 @@ export function createCodexProvider(): AgentProvider {
     id: 'codex',
     binaryName: 'codex',
 
-    buildArgs({ prompt, model, effort, sandboxNetworkAccess }: BuildArgsInput): string[] {
-      const args = ['exec', prompt, '--sandbox', 'workspace-write', '-c', 'approval_policy=never', '--json'];
-      if (sandboxNetworkAccess) args.push('-c', 'sandbox_workspace_write.network_access=true');
+    buildArgs({ prompt, model, effort, sandboxMode, sandboxNetworkAccess }: BuildArgsInput): string[] {
+      const mode = sandboxMode ?? 'workspace-write';
+      const args = ['exec', prompt, '--sandbox', mode, '-c', 'approval_policy=never', '--json'];
+      // Only meaningful at workspace-write: read-only has no use for it and
+      // danger-full-access already implies it.
+      if (mode === 'workspace-write' && sandboxNetworkAccess) {
+        args.push('-c', 'sandbox_workspace_write.network_access=true');
+      }
       // "auto" is loop's own default sentinel, not a Codex model — let the CLI pick.
       if (model && model !== 'auto') args.push('-m', model);
       if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
@@ -178,9 +183,14 @@ export function createCodexProvider(): AgentProvider {
     // `codex exec resume <id> <prompt>` with the same sandbox/json policy.
     // `exec resume` has no `--sandbox` flag — passing one aborts the process
     // before it starts — so the identical policy goes through `-c` instead.
-    buildResumeArgs({ prompt, model, effort, sessionId, sandboxNetworkAccess }) {
-      const args = ['exec', 'resume', sessionId, prompt, '-c', 'sandbox_mode="workspace-write"', '-c', 'approval_policy=never', '--json'];
-      if (sandboxNetworkAccess) args.push('-c', 'sandbox_workspace_write.network_access=true');
+    buildResumeArgs({ prompt, model, effort, sessionId, sandboxMode, sandboxNetworkAccess }) {
+      // `exec resume` takes no --sandbox flag (it exits before starting), so the
+      // same policy goes through -c.
+      const mode = sandboxMode ?? 'workspace-write';
+      const args = ['exec', 'resume', sessionId, prompt, '-c', `sandbox_mode="${mode}"`, '-c', 'approval_policy=never', '--json'];
+      if (mode === 'workspace-write' && sandboxNetworkAccess) {
+        args.push('-c', 'sandbox_workspace_write.network_access=true');
+      }
       if (model && model !== 'auto') args.push('-m', model);
       if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
       return args;
