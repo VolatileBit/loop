@@ -649,6 +649,15 @@ async function runAgentAttempt(
           ? parseInfraError(usageProbe) ?? 'provider-reported'
           : null;
 
+      const sessionId = provider.extractSessionId(combined);
+      // A provider only implements `sessionContextPeak` when it holds a better
+      // measurement than the stream did — codex keeps per-request usage in its
+      // rollout and emits none in `--json` — so prefer it when it answers.
+      const measuredPeak =
+        sessionId && provider.sessionContextPeak
+          ? provider.sessionContextPeak(sessionId)
+          : null;
+
       const base = {
         output: combined,
         usage,
@@ -656,8 +665,8 @@ async function runAgentAttempt(
         agentCli: settings.agentCli,
         model: settings.model,
         elapsedMs: Math.max(0, Date.now() - startedAt),
-        peakContextTokens,
-        sessionId: provider.extractSessionId(combined),
+        peakContextTokens: measuredPeak ?? peakContextTokens,
+        sessionId,
         infraSignature,
       };
       const limitFields = (usageLimited: boolean) => ({
@@ -669,7 +678,7 @@ async function runAgentAttempt(
         elapsedMs: base.elapsedMs,
         costUsd: base.costUsd,
         usage,
-        peakContextTokens,
+        peakContextTokens: base.peakContextTokens,
       });
 
       if (stuckReason || code !== 0) {

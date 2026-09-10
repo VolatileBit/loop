@@ -98,6 +98,15 @@ export interface AgentProvider {
    */
   parseTurnContextTokens(line: string): number | null;
   /**
+   * Peak context occupancy for a finished session, for CLIs that keep
+   * per-request usage somewhere other than the event stream. Codex is the
+   * case: its `--json` stream carries no usage events, but its rollout file
+   * records one `token_count` per request. Returning a value here overrides
+   * whatever `parseTurnContextTokens` accumulated, because a provider only
+   * implements it when it has the better measurement.
+   */
+  sessionContextPeak?(sessionId: string): number | null;
+  /**
    * Dollar cost of the session as reported by the CLI, or null when the CLI
    * reports none (codex/cursor/copilot) — null spend is invisible to --budget,
    * which loop warns about at startup.

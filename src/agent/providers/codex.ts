@@ -19,6 +19,10 @@
  * schema; the smoke-test runs did not emit them.
  */
 
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
 import { usageNumber, type AgentUsage } from '../../usage/tokens.js';
 import { truncate } from '../format.js';
 import { isSharedInfraError } from './infra-error.js';
@@ -78,6 +82,83 @@ function toolInputForItem(item: CodexItem): Record<string, unknown> {
     return { paths };
   }
   return {};
+}
+
+/**
+ * Peak context occupancy for a finished codex session, read from its rollout.
+ *
+ * Codex's `--json` stream carries no usage events, so loop had been reading
+ * `turn.completed.input_tokens` — a session-cumulative total that reached
+ * millions and was printed as a context window. The rollout keeps what the
+ * stream drops: one `token_count` per request, whose `last_token_usage`
+ * describes that request alone. `input_tokens` there already includes the
+ * cached portion (see `extractUsage`, which subtracts it to get the uncached
+ * part), so it *is* the occupancy — never sum it with `cached_input_tokens`.
+ *
+ * The maximum across those records is the high-water mark, which is the point:
+ * it survives compaction. A session that runs to 80% of the window, compacts
+ * to 10% and climbs to 70% peaked at 80%, and only a running max says so.
+ *
+ * Rollouts live at `~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-<ts>-<id>.jsonl`.
+ * That layout is undocumented, so every failure here is silent: an unreadable
+ * or missing rollout returns null and loop falls back to the labelled estimate.
+ */
+export function codexRolloutContextPeak(sessionId: string): number | null {
+  if (!/^[0-9a-f-]{16,64}$/i.test(sessionId)) return null;
+  const root = path.join(os.homedir(), '.codex', 'sessions');
+  const file = findRollout(root, `-${sessionId}.jsonl`, 4);
+  if (!file) return null;
+  try {
+    return peakFromRolloutLines(readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** The high-water mark across a rollout's `token_count` records; null when it has none. */
+export function peakFromRolloutLines(text: string): number | null {
+  let peak = 0;
+  for (const line of text.split('\n')) {
+    if (!line.includes('token_count')) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const payload = (parsed as { payload?: { type?: unknown; info?: unknown } }).payload;
+    if (payload?.type !== 'token_count') continue;
+    const info = payload.info as { last_token_usage?: Record<string, unknown> } | undefined;
+    const context = usageNumber(info?.last_token_usage?.input_tokens);
+    if (context > peak) peak = context;
+  }
+  return peak > 0 ? peak : null;
+}
+
+/** Newest-first search for a rollout whose name ends with `suffix`, bounded in depth. */
+function findRollout(dir: string, suffix: string, depth: number): string | null {
+  if (depth < 0) return null;
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return null;
+  }
+  const dirs: string[] = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry);
+    if (entry.endsWith(suffix)) return full;
+    try {
+      if (statSync(full).isDirectory()) dirs.push(full);
+    } catch {
+      // Unreadable entry: skip it rather than fail the whole search.
+    }
+  }
+  for (const child of dirs.sort().reverse()) {
+    const found = findRollout(child, suffix, depth - 1);
+    if (found) return found;
+  }
+  return null;
 }
 
 export function createCodexProvider(): AgentProvider {
@@ -204,6 +285,10 @@ export function createCodexProvider(): AgentProvider {
      */
     parseTurnContextTokens(): number | null {
       return null;
+    },
+
+    sessionContextPeak(sessionId: string): number | null {
+      return codexRolloutContextPeak(sessionId);
     },
 
     extractUsage(finalOutput: string): AgentUsage | null {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createCodexProvider } from './codex.js';
+import { codexRolloutContextPeak, createCodexProvider, peakFromRolloutLines } from './codex.js';
 
 // Lines captured verbatim from a live `codex exec ... --json` run (codex-cli 0.142.2).
 const THREAD_STARTED_LINE = '{"type":"thread.started","thread_id":"019f421b-2833-7510-b488-f791e9f77d1d"}';
@@ -193,6 +193,44 @@ describe('codex isUsageLimitError', () => {
 });
 
 describe('context reporting', () => {
+  const tokenCount = (lastInput: number, cumulative: number) =>
+    JSON.stringify({
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: {
+          total_token_usage: { input_tokens: cumulative },
+          last_token_usage: { input_tokens: lastInput, cached_input_tokens: lastInput - 500 },
+          model_context_window: 258_400,
+        },
+      },
+    });
+
+  it('takes the high-water mark across compactions, not the final or cumulative figure', () => {
+    // 80% of the window, compacted down, then back to 70%: the peak is the 80%.
+    const rollout = [
+      tokenCount(20_000, 20_000),
+      tokenCount(206_720, 226_720),
+      tokenCount(25_840, 252_560),
+      tokenCount(180_880, 433_440),
+    ].join('\n');
+    expect(peakFromRolloutLines(rollout)).toBe(206_720);
+  });
+
+  it('reads occupancy from last_token_usage alone, never summing the cached portion', () => {
+    // codex's input_tokens already includes cached_input_tokens; adding them
+    // double-counts and can exceed the window.
+    expect(peakFromRolloutLines(tokenCount(94_414, 797_365))).toBe(94_414);
+  });
+
+  it('returns null for a rollout with no token_count records', () => {
+    expect(peakFromRolloutLines('{"type":"event_msg","payload":{"type":"agent_message"}}')).toBeNull();
+  });
+
+  it('ignores an unparseable session id rather than walking the filesystem', () => {
+    expect(codexRolloutContextPeak('../../etc/passwd')).toBeNull();
+  });
+
   it('claims no measured context peak, because codex reports cumulative turn input', () => {
     const provider = createCodexProvider();
     // A real session: one turn.completed for the whole run, 797,365 input
