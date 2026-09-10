@@ -49,6 +49,14 @@ export type BuildArgsInput = {
   effort: string | null;
   /** The working root the agent operates on (main repo or a worktree). */
   cwd: string;
+  /**
+   * Let sandboxed agent commands reach the network, including loopback.
+   * Off by default. Without it a `workspace-write` sandbox blocks Docker, any
+   * `localhost` connection, and binding a port — so an agent cannot start
+   * MongoDB, run a Mongo-backed suite, boot Vite, or launch Chromium, and can
+   * only report that verification was impossible.
+   */
+  sandboxNetworkAccess?: boolean | undefined;
 };
 
 export type BuildResumeArgsInput = BuildArgsInput & {

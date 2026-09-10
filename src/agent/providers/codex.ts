@@ -166,8 +166,9 @@ export function createCodexProvider(): AgentProvider {
     id: 'codex',
     binaryName: 'codex',
 
-    buildArgs({ prompt, model, effort }: BuildArgsInput): string[] {
+    buildArgs({ prompt, model, effort, sandboxNetworkAccess }: BuildArgsInput): string[] {
       const args = ['exec', prompt, '--sandbox', 'workspace-write', '-c', 'approval_policy=never', '--json'];
+      if (sandboxNetworkAccess) args.push('-c', 'sandbox_workspace_write.network_access=true');
       // "auto" is loop's own default sentinel, not a Codex model — let the CLI pick.
       if (model && model !== 'auto') args.push('-m', model);
       if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
@@ -177,8 +178,9 @@ export function createCodexProvider(): AgentProvider {
     // `codex exec resume <id> <prompt>` with the same sandbox/json policy.
     // `exec resume` has no `--sandbox` flag — passing one aborts the process
     // before it starts — so the identical policy goes through `-c` instead.
-    buildResumeArgs({ prompt, model, effort, sessionId }) {
+    buildResumeArgs({ prompt, model, effort, sessionId, sandboxNetworkAccess }) {
       const args = ['exec', 'resume', sessionId, prompt, '-c', 'sandbox_mode="workspace-write"', '-c', 'approval_policy=never', '--json'];
+      if (sandboxNetworkAccess) args.push('-c', 'sandbox_workspace_write.network_access=true');
       if (model && model !== 'auto') args.push('-m', model);
       if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
       return args;

@@ -65,6 +65,7 @@ export const DEFAULT_CONFIG: LoopConfig = {
   reviewSkill: null,
   tddSkill: null,
   commitExcludePaths: [],
+  sandboxNetworkAccess: false,
   installCmd: null,
   dependencyFiles: ['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'],
   prdsDir: null,
@@ -126,6 +127,7 @@ const KNOWN_KEYS = new Set<string>([
   'reviewSkill',
   'tddSkill',
   'commitExcludePaths',
+  'sandboxNetworkAccess',
   'installCmd',
   'dependencyFiles',
   'prdsDir',
@@ -572,6 +574,8 @@ function readConfigFile(root: string): FileConfig {
   if (tddSkill !== undefined) config.tddSkill = tddSkill;
   const commitExcludePaths = expectStringArray(raw, 'commitExcludePaths');
   if (commitExcludePaths !== undefined) config.commitExcludePaths = commitExcludePaths;
+  const sandboxNetworkAccess = expectBoolean(raw, 'sandboxNetworkAccess');
+  if (sandboxNetworkAccess !== undefined) config.sandboxNetworkAccess = sandboxNetworkAccess;
   const installCmd = expectString(raw, 'installCmd');
   if (installCmd !== undefined) config.installCmd = installCmd;
   const dependencyFiles = expectStringArray(raw, 'dependencyFiles');

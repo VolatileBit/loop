@@ -465,7 +465,13 @@ async function runAgentAttempt(
   const liveOutput = options.liveOutput ?? true;
   const shuttingDown = options.shuttingDown ?? isShuttingDown;
 
-  const argsInput = { prompt, model: settings.model, effort: settings.effort, cwd };
+  const argsInput = {
+    prompt,
+    model: settings.model,
+    effort: settings.effort,
+    cwd,
+    sandboxNetworkAccess: options.config.sandboxNetworkAccess,
+  };
   // Resumed sessions get told they were interrupted, plus the full original
   // instructions — restating them is redundant for the session's context but
   // carries anything (like fresh verify output) rebuilt since the interrupt.

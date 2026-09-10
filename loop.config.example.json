@@ -23,6 +23,7 @@
   "reviewSkill": "builtin",
   "tddSkill": "builtin",
   "commitExcludePaths": ["dist"],
+  "sandboxNetworkAccess": false,
   "installCmd": "npm install",
   "dependencyFiles": ["package.json", "package-lock.json"],
   "prdsDir": "docs/prd",

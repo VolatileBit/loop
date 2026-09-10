@@ -192,6 +192,31 @@ describe('codex isUsageLimitError', () => {
   });
 });
 
+describe('sandbox network access', () => {
+  const provider = createCodexProvider();
+  const base = { prompt: 'p', model: null, effort: null, cwd: '/w' };
+
+  it('is off unless asked for', () => {
+    expect(provider.buildArgs(base).join(' ')).not.toContain('network_access');
+  });
+
+  it('opens the workspace-write sandbox to the network when enabled', () => {
+    // Without this a workspace-write sandbox blocks Docker, every localhost
+    // connection and any port bind, so an agent cannot run a Mongo-backed
+    // suite, boot Vite or launch Chromium.
+    expect(provider.buildArgs({ ...base, sandboxNetworkAccess: true })).toEqual(
+      expect.arrayContaining(['-c', 'sandbox_workspace_write.network_access=true']),
+    );
+  });
+
+  it('carries the same permission across a resume', () => {
+    const args = provider.buildResumeArgs({ ...base, sessionId: 't-1', sandboxNetworkAccess: true });
+    expect(args).toEqual(
+      expect.arrayContaining(['-c', 'sandbox_workspace_write.network_access=true']),
+    );
+  });
+});
+
 describe('context reporting', () => {
   const tokenCount = (lastInput: number, cumulative: number) =>
     JSON.stringify({

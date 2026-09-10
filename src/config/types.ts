@@ -201,6 +201,17 @@ export type LoopConfig = {
   tddSkill: string | null;
   /** Pathspecs excluded from staging ("stage everything, exclude these"). Empty = stage everything. */
   commitExcludePaths: string[];
+  /**
+   * Let sandboxed agent commands reach the network, loopback included.
+   * Default false. A `workspace-write` sandbox otherwise blocks Docker, every
+   * `localhost` connection and any port bind, so an agent cannot start
+   * MongoDB, run a Mongo-backed suite, boot Vite or launch Chromium — it can
+   * only report that it was unable to verify, and the loop then declines to
+   * accept coverage nothing proved. Enable it when the repo's gate needs
+   * services, understanding that it widens what agent-generated commands can
+   * reach.
+   */
+  sandboxNetworkAccess: boolean;
   /** Dependency install command for worktree sync. `null` = auto-install disabled. */
   installCmd: string | null;
   /** Files whose changes trigger `installCmd` during worktree sync. */
