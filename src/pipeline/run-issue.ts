@@ -613,13 +613,25 @@ export async function runIssuePipeline(
     }
 
     if (!isLoopComplete(issueAfterVerify, verify.ok, labels)) {
+      // The gate passed, so whatever is outstanding is unwritten work, not a
+      // failing test. Resuming at `verifyFix` would re-run a green gate and
+      // stop here again, forever — send the next run back to `implement`, and
+      // name the unchecked criteria so it need not re-derive them from a
+      // context that has very likely been compacted since they were read.
+      const unchecked = issueAfterVerify.acceptanceCriteria
+        .filter((line) => !/^- \[x\]/i.test(line))
+        .map((line) => line.replace(/^- \[ \]\s*/, ''));
+      setIssueStage(issueAfterVerify, 'implement');
       record({ outcome: 'issue-not-marked-done', agentOk, verifyOk: verify.ok });
       return result('issue-not-marked-done', {
+        lastStage: 'implement',
         fatal: {
           reason: `${issueAfterVerify.qualifiedId} not marked done despite passing verify`,
           details: [
             `Acceptance criteria are unchecked and triage is not ${labels.done}.`,
             `Issue file: ${issueAfterVerify.relPath}`,
+            ...unchecked.map((criterion) => `Unchecked: ${criterion}`),
+            'Checkpoint reset to "implement" so the next run finishes the work rather than re-verifying.',
           ],
         },
       });

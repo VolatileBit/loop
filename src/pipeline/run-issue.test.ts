@@ -206,6 +206,29 @@ describe('runIssuePipeline entry points', () => {
     expect(content).not.toContain('lastStage:');
   });
 
+  it('sends unfinished work back to implement instead of re-verifying it forever', async () => {
+    const { root, issue, config } = setupRepo();
+    // Verify will pass, but a criterion is outstanding: the remaining work is
+    // unwritten, not a failing test.
+    writeFileSync(
+      path.join(root, issue.relPath),
+      `---\nid: issue-01\ntitle: Test issue\ntriage: ${LABELS.readyForAgent}\n---\n\n` +
+        '## Acceptance criteria\n\n- [x] works\n- [ ] renderer tests cover deep links\n',
+    );
+    const { deps } = fakeDeps({ reviewVerdicts: [PASS_VERDICT] });
+
+    const result = await runIssuePipeline(issue, pipelineOptions(root, config, 'implement', deps));
+
+    expect(result.outcome).toBe('issue-not-marked-done');
+    // Without this the next run resumes at verifyFix, re-runs a green gate and
+    // stops here again — a livelock no restart can clear.
+    expect(result.lastStage).toBe('implement');
+    expect(issueFileContent(issue)).toContain('lastStage: implement');
+    // The outstanding criterion is named, so a compacted session need not
+    // re-derive it.
+    expect(result.fatal?.details).toContain('Unchecked: renderer tests cover deep links');
+  });
+
   it('skips the initial verify when the implement session proved the exact command in-stream', async () => {
     const { root, issue, config } = setupRepo();
     const { deps, agentCalls, verifyCount } = fakeDeps({
