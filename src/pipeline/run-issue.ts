@@ -196,7 +196,15 @@ export async function runIssuePipeline(
   const liveOutput = options.liveOutput ?? true;
   const entry = options.entryStage;
   let model = resolveStageAgentSettings(config, cliFlags, 'implement', issue.project).model;
-  const preExistingDirtyPaths = listDirtyPaths(cwd);
+  // Dirty paths are preserved so a fallback commit never absorbs someone
+  // else's work in progress. That holds on a fresh start; on a *resume* it
+  // inverts, because the dirty tree is the previous run's own unfinished
+  // output. Preserving it there means the work can never be committed: each
+  // restart re-captures it as "pre-existing", review keeps judging a HEAD that
+  // lacks it, and the finding recurs forever. PRD-011 lost five review rounds
+  // to exactly that, on lab files an agent could not commit itself because its
+  // sandbox denies `git index.lock`.
+  const preExistingDirtyPaths = entry === 'implement' ? listDirtyPaths(cwd) : [];
 
   const promptContext: PromptContext = {
     reviewSkill: config.reviewSkill,

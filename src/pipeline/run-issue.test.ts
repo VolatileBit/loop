@@ -229,6 +229,23 @@ describe('runIssuePipeline entry points', () => {
     expect(result.fatal?.details).toContain('Unchecked: renderer tests cover deep links');
   });
 
+  it('commits work left dirty by an earlier run when resuming, rather than preserving it forever', async () => {
+    const { root, issue, config } = setupRepo();
+    // Stand in for lab changes a previous run produced but could not commit:
+    // its sandbox denies `git index.lock`.
+    const stranded = path.join(root, 'packages', 'design-system', 'lab', 'component-lab.spec.ts');
+    mkdirSync(path.dirname(stranded), { recursive: true });
+    writeFileSync(stranded, "export const registry = { Table: '.pw-table' };\n");
+    const { deps } = fakeDeps({ reviewVerdicts: [PASS_VERDICT] });
+
+    await runIssuePipeline(issue, pipelineOptions(root, config, 'review', deps));
+
+    // Treating it as pre-existing would keep it out of every fallback commit,
+    // so review would judge a HEAD that never contains it.
+    const tracked = gitOrThrow(['ls-files', 'packages/design-system/lab/component-lab.spec.ts'], root);
+    expect(tracked).not.toBe('');
+  });
+
   it('skips the initial verify when the implement session proved the exact command in-stream', async () => {
     const { root, issue, config } = setupRepo();
     const { deps, agentCalls, verifyCount } = fakeDeps({
