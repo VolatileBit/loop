@@ -190,17 +190,20 @@ export function createCodexProvider(): AgentProvider {
     },
 
     /**
-     * Codex emits one `turn.completed` per turn, whose `input_tokens` is that
-     * request's whole input (the cached portion included), i.e. exactly its
-     * context occupancy. `extractUsage` below reads only the last one, so the
-     * peak has to be taken from the stream as it arrives.
+     * Always null: codex exposes no per-request context. It emits a single
+     * `turn.completed` for the whole session, and its `input_tokens` is the
+     * cumulative input across every model call in that turn — one 45-minute
+     * session reported 797,365 against a context window of roughly 260,000.
+     * Reading it as per-request occupancy produced "peak context" figures in
+     * the millions, which is a token total wearing a context window's name and
+     * invites exactly the wrong inference (it was read here as evidence of
+     * mid-session compaction). Without a per-request signal, loop falls back to
+     * `contextWindowEstimate`, which is labelled `(est.)` and documented as
+     * deliberately not a context window. An honest estimate beats a measured
+     * number that measures something else.
      */
-    parseTurnContextTokens(line: string): number | null {
-      const event = parseCodexEvent(line);
-      if (event?.type !== 'turn.completed') return null;
-      if (!event.usage || typeof event.usage !== 'object') return null;
-      const context = usageNumber((event.usage as Record<string, unknown>).input_tokens);
-      return context > 0 ? context : null;
+    parseTurnContextTokens(): number | null {
+      return null;
     },
 
     extractUsage(finalOutput: string): AgentUsage | null {

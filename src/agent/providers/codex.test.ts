@@ -192,6 +192,21 @@ describe('codex isUsageLimitError', () => {
   });
 });
 
+describe('context reporting', () => {
+  it('claims no measured context peak, because codex reports cumulative turn input', () => {
+    const provider = createCodexProvider();
+    // A real session: one turn.completed for the whole run, 797,365 input
+    // tokens against a context window of roughly 260,000. Read as per-request
+    // occupancy this yields a "peak context" in the millions — a token total
+    // wearing a context window's name.
+    const line = JSON.stringify({
+      type: 'turn.completed',
+      usage: { input_tokens: 797_365, cached_input_tokens: 713_856, output_tokens: 4_915 },
+    });
+    expect(provider.parseTurnContextTokens?.(line) ?? null).toBeNull();
+  });
+});
+
 describe('session resume', () => {
   it('extracts thread_id and resumes via `exec resume <id> <prompt>`', () => {
     const provider = createCodexProvider();
