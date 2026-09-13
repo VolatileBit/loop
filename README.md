@@ -1,571 +1,198 @@
-# loop
+# Loop
 
-**Give a coding agent your to-do list. Walk away.**
+**Plan with your coding agent. Let Loop work through the backlog.**
 
-Write tasks as markdown files. Loop works through them one at a time with an AI coding agent.
+Loop takes a set of local issues and drives a coding agent through implementation, verification, and code review. It retries failures, saves progress between runs, and flags work that needs your input.
 
-Every task gets checked before it lands: your tests must pass, and a second agent reviews the code. Failures get fixed and retried. Anything it can't solve is flagged for you.
+The included planning skills turn your idea into a spec and issues that Loop can read. You don't need to write their file formats by hand.
 
-It runs unattended — overnight, over a weekend, or while you're in meetings.
+## Get started
 
-```
-   pick a task
-        ↓
-    implement ←──┐
-        ↓        │
-      verify     │  fix and retry
-        ↓        │
-      review ────┘
-        ↓
-      commit
-        ↓
-    next task
-```
+You'll need **Node.js 22.13+**, a Git repository, and at least one supported coding agent CLI installed and logged in: **Claude Code, Codex, Cursor, or Copilot**.
 
----
-
-## Why you'd use it
-
-- **A backlog, not a chat.** No babysitting one prompt at a time.
-- **Nothing merges unchecked.** Your own test command is the gate. A separate review agent reads the diff.
-- **It works in a sandbox.** All work happens in a separate git worktree, never your checked-out branch. Nothing is ever pushed.
-- **It knows when to stop.** Stuck tasks are labelled and left for you, with notes on what it tried.
-- **Hit your usage limit? It waits.** Sleeps until your quota resets, then picks up exactly where it stopped. A small plan and a big backlog still finish — it just takes longer.
-
-## Requirements
-
-| | |
-|---|---|
-| **Node.js** | 22.13 or newer |
-| **git** | the target directory must be a git repo |
-| **An agent CLI** | at least one of `claude`, `codex`, `cursor`, `copilot` — installed and logged in |
-
-## Install
+### 1. Install Loop and the planning skills
 
 ```bash
 npm install -g @polyweave/loop
+cd your-project
+loop install planning-skills
 ```
 
-For development from a checkout:
+Choose **project** to install skills for this repository, or **user** to install them in your home directory for use across projects. The installer prints where it puts the files. It supports all four agents by default and includes rulesync, so there's nothing else to install.
 
-```bash
-git clone https://github.com/VolatileBit/loop
-cd loop
-npm install
-npm link
+Open a new coding-agent session in your project so it can discover the installed skills.
+
+### 2. Plan with your coding agent
+
+In your coding agent, type `/` followed by the skill name and describe what you want to build:
+
+- **Small to medium projects:** use `/grilling` to work through the plan, or `/grill-with-docs` to also record decisions and shared terminology.
+- **Complex, large projects:** use `/wayfinder` to map the work and resolve planning decisions one at a time.
+
+For example:
+
+```text
+/grill-with-docs I want users to preview images before uploading them.
 ```
 
-Check it worked:
+Once planning is done, save the agreed spec:
 
-```bash
-loop --help
+```text
+/to-spec
 ```
 
-To remove: `npm uninstall -g @polyweave/loop`
+Then generate implementation issues from it:
 
-## Quick start
+```text
+/to-issues
+```
 
-From any git repo you want loop to work on:
+The skills create the spec, issue links, acceptance criteria, and dependencies. By default, they save everything together:
 
-**1. Set it up**
+```text
+specs/YYYYMMDD-project-slug/
+  spec.md
+  issues/
+    01-first-task.md
+    02-next-task.md
+```
+
+You can request a custom location. The skills also respect existing project configuration.
+
+### 3. Configure Loop
+
+Back in your terminal:
 
 ```bash
 loop init
 ```
 
-Asks a few questions (which agent, how to run your tests, where tasks live) and writes `loop.config.json`. It finds issue/spec directories and project slugs that have no registered override, then offers suggested paths you can accept or replace. Existing values, including machine-local project entries, are preserved.
+Choose your agent and the command that verifies your project, such as `npm test`. Loop discovers the planning files and unregistered projects, then offers paths you can accept or replace. It saves the settings in `loop.config.json`.
 
-`loop init --no-discovery` skips the optional agent survey while keeping filesystem suggestions. Without a terminal, use explicit flags such as `loop init --verify-cmd "npm test" --issues-dir specs --specs-dir specs --project 20260913-image-previews --project-spec specs/20260913-image-previews/spec.md`.
+To skip the optional agent survey and use filesystem suggestions only, run `loop init --no-discovery`.
 
-**2. Write a task**
-
-For a new project, init defaults both scan roots to `specs`. Create `specs/20260913-my-project/issues/issue-01.md` (use the project creation date):
-
-```markdown
----
-id: issue-01
-title: Add a --version flag to the CLI
-triage: ready
----
-
-## Acceptance criteria
-
-- [ ] `mytool --version` prints the version from package.json
-- [ ] Covered by a test
-```
-
-**3. See what it would do**
+Review and commit the spec, issues, and configuration before running Loop. Its default worktree starts from your current branch's committed files:
 
 ```bash
-loop run --dry-run
+git add specs/ loop.config.json
+git commit -m "Add implementation plan and Loop configuration"
 ```
 
-**4. Run one task**
+Use your chosen planning path instead of `specs/` if you changed it.
+
+### 4. Run your first task
 
 ```bash
-loop run --once
+loop run --dry-run   # preview which task Loop would pick
 ```
 
-**5. Let it work the whole list**
+Loop normally creates a sibling working directory named `<repo>-loop`, on the branch `loop/rolling/<your-branch>`. Check the startup output for the actual working directory and install your project's dependencies there if needed.
+
+From your original checkout, run one task:
+
+```bash
+loop run --once      # implement, verify, and review one task
+```
+
+When you're ready to work through the remaining backlog:
 
 ```bash
 loop run
 ```
 
-## What a run looks like
+Review the resulting changes, then merge that branch into your original branch when you're satisfied. Logs and run state stay in `.loop/` in your original checkout.
 
-```
-11:29:57 [16|implement] starting claude-code session (model=claude-opus-5; effort=high)
-11:29:57 [16|implement] │ I'll start by reading the issue file and the shared notes.
-11:29:57                │ Nothing in the debrief covers the export path yet.
-11:29:58 [16|implement] │ → read: src/apps/data-export/AGENT.md
-11:31:02 [16|implement] └ 8m41s · $6.11 · 7.6M tokens · peak context 171.2k
-11:31:02 [loop] 3/5 workers active
-```
+## Using the planning skills
 
-The `│` marks the agent talking; loop's own lines break out of it. Each line is colour-keyed to its task, so a long run is scannable.
+Loop's skills are adapted from [Matt Pocock's skills](https://github.com/mattpocock/skills), with changes for Loop's planning and execution workflows.
 
-Everything is also written to `.loop/logs/`, so closing the terminal loses nothing.
+Use the planning commands first, then `/to-spec` → `/to-issues`:
 
-## Commands
-
-| Command | What it does |
+| Skill | Use it to… |
 |---|---|
-| `loop run` | Work the backlog until nothing's left |
-| `loop run --once` | Do one task, then stop |
-| `loop run --dry-run` | Show what it would pick, change nothing |
-| `loop run <project>` | Only work tasks in one folder |
-| `loop goal "..."` | No backlog — describe an outcome, loop writes its own tasks (see [Goal mode](#goal-mode)) |
-| `loop review --fix` | Re-review (and fix) tasks already done |
-| `loop fix-nits` | Clear the backlog of minor review comments in one pass |
-| `loop polish <project>` | Wrap up a project: clear nits, write up what was learned |
-| `loop archive <project>` | Retire a finished project into a dated folder |
-| `loop list-runs` | Show past runs |
-| `loop init` | Discover planning paths and unregistered projects; guided setup |
-| `loop install planning-skills` | Install the planning bundle for local coding agents through rulesync |
-| `loop completion zsh` | Tab completion (`bash` also supported) |
+| `/grilling` | Plan a small to medium project by challenging assumptions |
+| `/grill-with-docs` | Plan a small to medium project while recording decisions and terminology |
+| `/wayfinder` | Plan a complex, large project through a map of decisions |
+| `/to-spec` | Save the completed plan as a specification |
+| `/to-issues` | Generate verifiable issues with dependencies from the spec |
+| `/domain-modeling` | Establish shared domain terms and architectural decisions |
 
-Add `--help` to any of them for the full flag list.
-
-## Running out of quota
-
-Hitting a usage limit doesn't end the run. By default loop waits for the reset, then carries on.
-
-```
-17:42:10 [loop] usage limit (session) hit — waiting until 6/8/2026, 9:00:00 PM
-                for the reset, then resuming. The machine is kept awake for the
-                wait. Press ESC to stop instead.
-17:42:10 [loop] SPEC-006/issue-12 paused on the usage limit — it will be
-                re-claimed after the reset.
-21:01:12 [12|implement] starting claude-code session (model=claude-opus-5)
-```
-
-This is the difference between a backlog finishing overnight and a backlog stopping at 6pm. Especially useful on smaller plans.
-
-What it does while waiting:
-
-- **Reads the reset time** from the provider's own message. Can't find one, it re-checks every 15 minutes.
-- **Keeps the machine awake** on macOS, so it's actually there to resume.
-- **Resumes the same session** rather than starting over, so the agent doesn't re-derive work it already did.
-- **Keeps your place.** The interrupted task holds its checkpoint and continues from that stage.
-- **ESC cancels the wait** if you'd rather stop.
-
-Configure it per limit window:
-
-```json
-{ "usageLimits": { "session": "wait", "weekly": "stop" } }
-```
-
-Those are the defaults — wait out a short session limit, but stop on a weekly one rather than sleeping for days. Set either to `"stop"` to end the run instead (exit code 2, plus a webhook if you've configured one).
-
-Got accounts on more than one provider? Loop can switch instead of waiting — see [falling back](#configuration).
-
-## Stopping a run
-
-| Press | What happens |
-|---|---|
-| **ESC** | Finish the current task, then stop |
-| **ESC** again | Stop at the next safe point, saving progress |
-| **Ctrl+C** twice | Stop right now |
-
-Stopped tasks keep a checkpoint. The next `loop run` picks them up where they left off.
-
-## Writing tasks
-
-Planning tasks live in `specs/<YYYYMMDD>-<project-slug>/issues/`, beside `spec.md` and an optional `map/`. The full dated folder name is the Loop project ID. Existing `issues/<project>/` layouts remain supported. Each project represents one unit of work — a feature, a refactor, or a maintenance backlog.
-
-```markdown
----
-id: issue-07
-title: Per-task-type timeouts
-triage: ready
----
-
-## Blocked by
-
-- issue-03
-
-## Acceptance criteria
-
-- [ ] Each task type reads its own timeout
-- [ ] Defaults unchanged when not configured
-```
-
-| Field | Meaning |
-|---|---|
-| `id` | Unique inside its folder. `issue-07` is fine. |
-| `title` | What it is |
-| `triage` | Current state — `ready` means loop may pick it up |
-| `## Blocked by` | Won't start until those tasks are done |
-| `## Acceptance criteria` | What "done" means |
-
-### Plan with skills
-
-Run this to choose installation for the current project or your user account:
+To choose the installation scope or agents explicitly:
 
 ```bash
-loop install planning-skills
-# Or select agents:
 loop install planning-skills --scope user --targets claudecode,codexcli
-# Install only for the current project without prompting:
 loop install planning-skills --scope project
 ```
 
-Loop includes a pinned [rulesync](https://github.com/dyoshikawa/rulesync) dependency and calls its generation API; no separate rulesync installation is needed. The six planning skills are `grilling`, `grill-with-docs`, `domain-modeling`, `wayfinder`, `to-spec`, and `to-issues`.
-
-| Target | Project destination | User destination |
+| Agent target | Project location | User location |
 |---|---|---|
 | `claudecode` | `.claude/skills/` | `~/.claude/skills/` |
 | `codexcli` | `.agents/skills/` | `~/.agents/skills/` |
 | `cursor` | `.cursor/skills/` | `~/.cursor/skills/` |
 | `copilot` | `.github/skills/` | `~/.copilot/skills/` |
 
-All four agents are selected by default. In a terminal, omitting `--scope` asks where to install, with project as the default. Without a terminal it defaults to project; scripts can select either scope explicitly. `--interactive` enables the prompt with piped input. User scope uses your home directory and does not require a project.
+Without a terminal, installation defaults to project scope. Use `--dry-run` to preview destinations. Existing identical files are skipped; conflicting files require `--force` to replace. After updating Loop, run the installer again to refresh the skills.
 
-`--dry-run` previews absolute destination paths after generation in a temporary directory. Identical files are skipped; differing files stop the entire installation before destination writes. Use `--force` to overwrite those files after reviewing them. Extra files are preserved, symlink destinations are refused, and existing rulesync configuration is not changed or used. These protections apply to both scopes. Re-run the installer after updating Loop to refresh the skills.
+For custom tooling or manual authoring, see the [planning format reference](src/skills/planning/to-spec/references/loop-planning.md).
 
-Use `to-spec` to capture an agreed plan, then `to-issues` to create independently verifiable slices. The default planning layout is:
+## Everyday commands
 
-```text
-specs/20260913-image-previews/
-  spec.md
-  issues/
-    01-upload.md
-    02-preview.md
-  map/                        # optional planning decisions
-```
-
-Each issue has `id`, `title`, `triage`, and a repository-relative `spec` link in frontmatter:
-
-```markdown
----
-id: 02-preview
-title: Generate an image preview
-triage: ready
-spec: specs/20260913-image-previews/spec.md
----
-
-## Blocked by
-
-- 01-upload
-
-## Acceptance criteria
-
-- [ ] The upload integration test proves a supported image produces a preview.
-```
-
-Use full dependency IDs or filename stems; Loop does not match numeric prefixes. A `Status:` line or a title heading does not replace frontmatter. Skills honor configured `triageLabels`; defaults are `ready` for agent work and `delegated` for human-owned work. Dependencies on human work wait until its `triage` is `done`. A backlog consisting only of delegated work is settled for Loop, while those tasks remain with their human owners.
-
-Use the local creation date in `YYYYMMDD` form and reuse that dated folder when continuing the same effort. Here, the Loop project ID is `20260913-image-previews`, including the date; the nested directory name `issues` is not the project ID.
-
-For the default layout, configure `"issuesDir": "specs"` and `"specsDir": "specs"`. These are scan roots containing project folders, not a single project's `issues/` directory. A custom root such as `planning/features` can contain the same dated project structure; choose it for both settings in init. Explicit existing roots and older `issues/<project>/*.md` layouts are preserved. Loop's legacy runtime fallback remains `issues` for configurations that omit `issuesDir`; new init configurations write `specs` explicitly.
-
-Specs can live elsewhere via an issue's `spec` field or `projects.<project-id>.spec`. Without either override, `specsDir` supports `<project-id>/spec.md` or a matching flat Markdown filename. Ambiguous implicit matches require an explicit `spec` pointer.
-
-Older `prdsDir` and `projects.<project-id>.prd` config keys, `prd` issue frontmatter, and the `--prds-dir`/`--project-prd` init flags remain accepted as input aliases. New config, issue templates, help, and prompts use spec terminology. Within one config file or issue, the new key wins when both names exist; machine-local config still overrides tracked config. Running `loop init` rewrites old keys in the tracked config using the new names while preserving their values. Existing folders and issue files are not renamed.
-
-Run `loop init` to review discovered dated projects and paths, then `loop run 20260913-image-previews --dry-run`. Project entries are optional overrides: Loop discovers issues under its configured root. In a planning project with an `issues/` container, sibling specs and maps are excluded from execution. Agreed test boundaries belong in the spec's `## Testing Decisions` section; unresolved consequential decisions keep dependent work out of `ready`. Archiving this layout preserves the whole project folder under the archive's `planning/` directory, including its spec, issues, and map.
-
-### Task states
-
-Loop moves tasks between these as it works:
-
-| Label | Meaning |
+| Command | What it does |
 |---|---|
-| `ready` | Loop can pick this up |
-| `in-progress` | Being worked on now |
-| `done` | Passed tests and review |
-| `needs-human` | Loop got stuck — read its notes and decide |
-| `needs-info` | The task isn't clear enough to start |
-| `verify-failed` | Tests kept failing |
-| `delegated` | You took it over. Loop stops counting it as outstanding. |
-| `wontfix` | Not doing it |
+| `loop run` | Work through available tasks |
+| `loop run --once` | Process one task |
+| `loop run --dry-run` | Preview task selection |
+| `loop run <project>` | Work on one project; use its full dated folder name |
+| `loop run --unblock` | Retry `needs-human` tasks after you've addressed the cause |
+| `loop review --fix` | Re-review completed work and fix findings |
+| `loop fix-nits` | Address accumulated minor review comments |
+| `loop polish <project>` | Clear nits and record project learnings |
+| `loop archive <project>` | Archive a finished project and its planning files |
+| `loop list-runs` | Show past runs |
 
-Stuck on something? Fix the cause, then:
+Use `loop --help` or `loop <command> --help` for more options.
 
-```bash
-loop run --unblock
-```
+**Pause and resume:** press **ESC** to finish the current task and stop. Press it again to stop at the next safe point. **Ctrl+C twice** stops immediately. Run `loop run` again to resume saved progress.
 
-That puts `needs-human` tasks back in the queue, resuming where they stopped.
+**Usage limits:** by default, Loop waits for session limits to reset and stops on weekly limits. Change this with `usageLimits` in your configuration.
+
+**Work that needs you:** inspect the issue and its notes when Loop flags it. Resolve missing decisions or failed checks before retrying. Human-owned issues remain with you; dependent tasks wait for them to be completed.
 
 ## Configuration
 
-`loop.config.json` at your repo root. Only one field is required.
+`loop init` handles the initial setup. For later changes, edit `loop.config.json`; put machine-specific overrides in a gitignored `loop.config.local.json`.
 
-```json
-{
-  "agentCli": "claude-code",
-  "verifyCmd": "npm run typecheck && npm test",
-  "issuesDir": "issues"
-}
-```
+The [example configuration](loop.config.example.json) covers models, agents per stage, parallel tasks, dependency installation, provider fallback, notifications, and custom task labels. Use `loop init --help` for setup flags.
 
-| Field | Default | What it does |
-|---|---|---|
-| `verifyCmd` | — | **Required.** The command that proves the work is good. Your tests. |
-| `agentCli` | `cursor` | `cursor`, `claude-code`, `codex`, or `copilot` |
-| `model` | `auto` | Model to use |
-| `effort` | — | Reasoning effort. Not supported on cursor. |
-| `issuesDir` | `issues` | Where tasks live |
-| `maxVerifyCycles` | `3` | Fix attempts before giving up on tests |
-| `maxReviewCycles` | `3` | Fix attempts before escalating to you |
-| `maxParallelRuns` | `1` | Tasks at once, each in its own worktree |
+New projects use `specs` as both the spec and issue scan root. Existing custom paths and older layouts remain supported. Run `loop init` after adding a planning project to discover it; existing configured paths are preserved.
 
-`loop.config.example.json` in this repo shows every available option.
+Loop's built-in TDD, review, and handoff guidance ships with the runtime. The planning-skills installation is for the agent you plan with.
 
-**Machine-specific settings** go in `loop.config.local.json` (gitignore it). Read over the top of the tracked config — handy for local paths and tokens.
+## Start from a goal instead
 
-<details>
-<summary><b>Different agents for different stages</b></summary>
-
-Use a cheap model to write code and an expensive one to review it:
-
-```json
-{
-  "agentCli": "cursor",
-  "stages": {
-    "implement": { "agentCli": "claude-code", "model": "sonnet-5", "effort": "high" },
-    "review":    { "agentCli": "codex", "model": "gpt-5.5", "effort": "xhigh" }
-  }
-}
-```
-
-Stages: `implement`, `verifyFix`, `review`, `reviewFix` (plus `plan` and `evaluate` in goal mode).
-
-Effort levels differ per provider:
-
-| Provider | Allowed values |
-|---|---|
-| `claude-code` | `low`, `medium`, `high`, `xhigh`, `max` |
-| `codex` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra` |
-| `copilot` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |
-| `cursor` | not supported |
-
-</details>
-
-<details>
-<summary><b>Falling back when you hit a usage limit</b></summary>
-
-```json
-{
-  "agentCli": "codex",
-  "fallbackAgents": [
-    { "agentCli": "claude-code", "model": "opus-5" },
-    { "agentCli": "copilot" }
-  ]
-}
-```
-
-Hit a provider limit, loop moves down the list instead of stopping. It remembers which providers are limited and skips them until they reset.
-
-Only usage limits trigger this — crashes and ordinary errors don't.
-
-If every provider is limited, `usageLimits` decides what happens:
-
-```json
-{ "usageLimits": { "session": "wait", "weekly": "stop" } }
-```
-
-- **`wait`** — sleep until the limit resets, then carry on. Keeps the machine awake on macOS.
-- **`stop`** — end the run (exit code 2) and fire a webhook so you hear about it.
-
-</details>
-
-<details>
-<summary><b>Per-project settings</b></summary>
-
-Different test commands for different parts of a monorepo:
-
-```json
-{
-  "verifyCmd": "pnpm verify",
-  "projects": {
-    "SPEC-006": { "verifyCmd": "pnpm --filter @org/web run verify", "spec": "docs/specs/SPEC-006-web.md" },
-    "hotfixes": { "verifyCmd": "pnpm test" }
-  }
-}
-```
-
-A project can override `verifyCmd`, `model`, `effort`, `env`, `preflight`, `usageLimits`, and which design doc gets shown to the agent.
-
-</details>
-
-<details>
-<summary><b>Running several tasks at once</b></summary>
-
-```json
-{ "maxParallelRuns": 3 }
-```
-
-Each task gets its own worktree, then merges back. If two tasks touch the same files and the merge breaks, that task is flagged `needs-human` and the rest keep going.
-
-</details>
-
-<details>
-<summary><b>Environment and readiness checks</b></summary>
-
-```json
-{
-  "env": { "NX_DAEMON": "false" },
-  "preflight": {
-    "cmd": "pg_isready -q",
-    "message": "start the dev database: `docker compose up -d db`"
-  }
-}
-```
-
-- **`env`** — added to the environment for every agent session and test run.
-- **`preflight`** — checked before picking up each task. Fails, and the run stops with your message. Stops loop grinding through a backlog when your database is down.
-
-Loop never *starts* anything itself — it only checks.
-
-</details>
-
-<details>
-<summary><b>Notifications</b></summary>
-
-```json
-{
-  "webhooks": [
-    {
-      "url": "${SLACK_WEBHOOK_URL}",
-      "format": "slack",
-      "events": ["run-completed", "issue-escalated", "usage-limit"]
-    }
-  ]
-}
-```
-
-Events: `issue-completed`, `issue-escalated`, `run-completed`, `fix-nits-completed`, `polish-completed`, `goal-completed`, `usage-limit`.
-
-`${VARS}` resolve from the environment at send time, so tokens stay out of git. `format` is `generic` (JSON) or `slack` (Block Kit).
-
-</details>
-
-<details>
-<summary><b>Spend cap (experimental — Claude Code only)</b></summary>
+For work where you want Loop to generate its own tasks:
 
 ```bash
-loop run --budget 50
+loop goal "Migrate API routes to the new gateway client" --round-limit 5
+loop goals
 ```
 
-Stops claiming new work once reported spend passes $50. An in-flight task always finishes, so the cap is a floor on where it stops, not a hard ceiling.
-
-⚠️ **Only `claude-code` reports what a session cost.** `codex`, `cursor`, and `copilot` report nothing, so their spend is invisible to the cap — with those, `--budget` will never trigger no matter how much you spend. Loop warns at startup when a capped run uses a CLI it can't see the cost of:
-
-```
-[loop] warning: --budget only counts cost the agent CLI reports; codex, cursor
-sessions report none, so their spend is invisible to the cap.
-```
-
-Treat it as a safety net on Claude Code runs, not as a spend control you can rely on. For everything else, bound the run with `--once`, `--max-iterations`, or `--round-limit` instead.
-
-</details>
-
-<details>
-<summary><b>Custom task labels</b></summary>
-
-If your team already says `ready-for-agent` instead of `ready`:
-
-```json
-{
-  "triageLabels": {
-    "readyForAgent": "ready-for-agent",
-    "done": "agent-done"
-  }
-}
-```
-
-Any label loop doesn't recognise is reported at startup rather than silently ignored — a typo would otherwise drop a task off the backlog with nothing said.
-
-</details>
-
-<details>
-<summary><b>Built-in TDD and review workflows</b></summary>
-
-```json
-{ "tddSkill": "builtin", "reviewSkill": "builtin" }
-```
-
-Embeds loop's own TDD and two-axis review workflows into every prompt. Same behaviour across all four agent CLIs, nothing to install.
-
-Point them at your own skill instead if you have one: `"reviewSkill": "/review-work"`.
-
-</details>
-
-## Goal mode
-
-No backlog? Describe the outcome instead.
-
-```bash
-loop goal "Migrate every API route to the new gateway client" --round-limit 5
-loop goals                    # list goals and their progress
-loop goal gateway-migration   # resume where it stopped
-```
-
-Loop cycles **plan → work → evaluate**: it writes its own tasks, works through them, then a fresh agent judges whether the goal is actually met by looking at the code — not at ticked checkboxes. Not there yet, it plans another round.
-
-Since there's no test command defined up front, each task picks and declares its own — and the reviewer checks that choice is honest.
-
-**Always bound it.** There's no default round limit, so an open-ended goal can keep planning rounds indefinitely. Use `--round-limit`. Loop warns if you give it nothing to stop at.
-
-## Safety
-
-- Work happens in a **separate git worktree**, never your checked-out branch.
-- **Nothing is ever pushed.** No PRs opened, no releases cut.
-- `git push`, `gh pr create`, and `gh release` are **explicitly blocked** for `claude-code` and `copilot`. On `codex` the sandbox blocks network access as a side effect.
-- ⚠️ **cursor has no equivalent block** — only the prompt stops it. Bear that in mind when configuring cursor stages.
-- One loop per repo at a time, so two runs can't fight each other.
-- These are boundaries, not settings. There's no config to weaken them.
-
-## Good to know
-
-**It won't run your tests twice.** If the agent already ran your exact test command and it passed, loop skips its own run. Anything that could have changed files afterwards, and it runs them again properly.
-
-**It remembers between sessions.** Notes accumulate per project — testing quirks, where conventions live — and get passed to later tasks. `loop polish` promotes the durable parts into your repo's `CONTEXT.md`.
-
-**Minor review comments don't block.** They collect in `.loop/nits.md`. Clear them whenever with `loop fix-nits`.
-
-**Interrupted work resumes.** Every task records which stage it reached. Picked up again, it continues from there rather than starting over.
+Loop repeats planning, implementation, and evaluation until the goal is met or the round limit is reached. Use the goal ID shown by `loop goals` to resume it with `loop goal <id> --round-limit 5`. Set a round limit: there is no default limit.
 
 ## Development
 
 ```bash
-npm test          # unit tests
+git clone https://github.com/VolatileBit/loop
+cd loop
+npm install
+npm link
+npm test
 npm run typecheck
-npm run test:e2e  # drives the real agent CLIs — spends real quota
 ```
 
-`LOOP_E2E_CLIS=claude-code,codex npm run test:e2e` narrows the matrix.
+`npm run test:e2e` uses real agent CLIs and consumes quota. Set `LOOP_E2E_CLIS=claude-code,codex` to narrow the agents tested.
 
-Maintained skill sources live in `src/skills/`:
-
-- `planning/`: the six pre-loop skills installed by `loop install planning-skills`. The shared format reference is `planning/to-spec/references/loop-planning.md`.
-- `runtime/`: TDD, code review, and handoff Markdown loaded directly by the runtime wrappers and prompt builder. These are the single source of the built-in guidance; preserve Loop's verdict and handoff block protocols.
-- `explaining/`: the junior-engineer and layperson explanation skills, with fictional generic examples.
-
-All three directories ship with `src` in the npm package. `skill-bundles/` is a gitignored local import directory; Loop does not load, install, or package skills from it.
+Maintained skills live in [`src/skills/`](src/skills/): `planning/` contains the installable planning bundle, `runtime/` contains the built-in workflows, and `explaining/` contains generic explanation skills. All ship in the npm package. `skill-bundles/` is ignored and is not used or packaged by Loop.
 
 ## License
 
