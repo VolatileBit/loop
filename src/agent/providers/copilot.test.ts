@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { COPILOT_DENIED_REMOTE_TOOLS, createCopilotProvider } from './copilot.js';
 
 // Representative lines matching the JSONL shapes probed against copilot 1.0.71
-// (see the copilot-provider PRD): every event is {type, data, id, timestamp,
+// (see the copilot-provider spec): every event is {type, data, id, timestamp,
 // parentId, ephemeral?} except the terminal `result`, whose fields are top-level.
 const REASONING_LINE = JSON.stringify({
   type: 'assistant.reasoning',

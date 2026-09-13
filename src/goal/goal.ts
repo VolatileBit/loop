@@ -4,7 +4,7 @@
  *
  * A goal lives at `.loop/goals/<slug>/`:
  *
- *   goal.md                 — the goal text (the spec every session reads in place of a PRD)
+ *   goal.md                 — the goal text (the spec every session reads)
  *   issues/<slug>/NN-*.md   — agent-generated backlog; the goal slug doubles as the project
  *                             folder name, so the regular discovery/pipeline machinery applies
  *   verify/<issue-id>.cmd   — the verify command each implement session declared (one line)

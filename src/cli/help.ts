@@ -52,12 +52,13 @@ Usage: loop <command> [options]
 
 Commands:
   init               Guided setup: detect agent CLIs, discover the repo, write loop.config.json
+  install planning-skills  Install planning skills for local coding agents using rulesync
   run [project]      Pick and complete unblocked issues (optionally limited to one project)
   review             Review selected issues (optionally fixing blocking findings)
   fix-nits           Work through the accumulated nits backlog (.loop/nits.md) in one session
   polish             Wrap up a project: fix-nits batch, then distill its notes into CONTEXT.md
   archive            Retire a wrapped-up project into <archiveDir>/<date>-<project>/
-  goal [text|slug]   Loop plan → drain → evaluate rounds toward a stated outcome (no PRD needed)
+  goal [text|slug]   Loop plan → drain → evaluate rounds toward a stated outcome (no spec needed)
   goals              List goals with their status, round, and issue counts
   list-runs          Print recorded runs from .loop/runs.jsonl
   completion SHELL   Print a bash or zsh completion script
@@ -77,7 +78,7 @@ against it, and repeat until no work remains or you stop it. A re-picked
 failed issue resumes at its recorded lastStage checkpoint.
 
 Arguments:
-  project                     Only work on issues in this project folder (e.g. PRD-006)
+  project                     Only work on issues in this project folder (e.g. SPEC-006)
 
 Options:
   --once                      Run one issue iteration and exit
@@ -131,6 +132,7 @@ dated folder at <archiveDir>/<date>-<project>/ — its issues, run artifacts,
 archived handoffs, project notes, and its projects.<name> config entry
 (written as loop.project.json, itself a valid partial config).
 
+A nested spec project is kept together under planning/ in the archive.
 Nothing is deleted. Reverting is moving the folder back. The only removals are
 directories the move left empty.
 
@@ -149,8 +151,12 @@ export function initHelp(): string {
 
 Guided setup for loop.config.json. Detects installed agent CLIs, optionally
 runs a bounded read-only discovery session that learns the repo (candidate
-verify command — validated by executing it — plus issue/PRD directories),
-then asks each question with the findings as suggested defaults.
+verify command — validated by executing it — plus issue/spec directories),
+then asks each question with the findings as suggested defaults. Filesystem
+discovery also finds issue/spec roots and unregistered project slugs without
+an agent session. Accept suggested paths or enter custom paths. New setups
+default both scan roots to specs: specs/<YYYYMMDD>-<project>/spec.md and
+specs/<YYYYMMDD>-<project>/issues/. The dated folder name is the project ID.
 
 An existing config is extended, never clobbered: keys with values are kept;
 only missing keys and new projects.<name> entries are written.
@@ -161,14 +167,14 @@ guided flow even when piped (answers can be piped in up front).
 
 Options:
   --interactive               Guided flow even without a TTY
-  --no-discovery              Skip the repo-discovery agent session
+  --no-discovery              Skip the agent survey; keep filesystem suggestions
   --agent-cli CLI             cursor|claude-code|codex|copilot
   --verify-cmd CMD            Verify command to write
-  --issues-dir PATH           Issues directory to write
-  --prds-dir PATH             PRD docs directory to write
+  --issues-dir PATH           Root containing project issue folders
+  --specs-dir PATH            Specs directory to write
   --project NAME              Add a projects.NAME entry…
   --project-verify-cmd CMD    …with this per-project verify command
-  --project-prd PATH          …and/or this PRD path/prefix
+  --project-spec PATH         …and/or this spec path/prefix
   --quiet                     Hide the discovery session's live stream
   -h, --help                  Show this help`;
 }
@@ -176,7 +182,7 @@ Options:
 export function goalHelp(): string {
   return `Usage: loop goal ["<goal text>" | <slug>] [options]
 
-Goal mode: no PRD, no curated backlog. Loop cycles plan → drain → evaluate —
+Goal mode: no spec, no curated backlog. Loop cycles plan → drain → evaluate —
 a fresh session plans the smallest next batch of issues, the regular pipeline
 works them (each implement session declares its own verify command), and a
 fresh session judges the goal against the observable repo state — until the
@@ -210,7 +216,7 @@ export function reviewHelp(): string {
   return `Usage: loop review [--fix] [--until ID | --ids ID1,ID2 | --file PATH] [options]
 
 Run a review session for the selected issues. Issue references accept a
-qualified id (project/id, e.g. PRD-006/issue-07) or a bare local id when it is
+qualified id (project/id, e.g. SPEC-006/issue-07) or a bare local id when it is
 unambiguous repo-wide.
 
 Options:
@@ -237,4 +243,30 @@ export function completionHelp(): string {
 Print an installable shell completion script. Install with:
   eval "$(loop completion zsh)"   # in ~/.zshrc
   eval "$(loop completion bash)"  # in ~/.bashrc`;
+}
+
+export function installHelp(): string {
+  return `Usage: loop install planning-skills [options]
+
+Generate the bundled pre-loop planning skills with rulesync and install them
+into project or user agent skill directories. Loop includes rulesync;
+no separate installation or global rulesync executable is needed.
+Includes grilling, grill-with-docs, domain-modeling, wayfinder, to-spec, to-issues.
+
+Options:
+  --scope SCOPE    project or user. Without this flag, terminals ask where to
+                   install; non-interactive commands default to project.
+  --interactive    Ask where to install even when input is piped
+  --targets LIST   Comma-separated rulesync targets (default: all four below)
+                   claudecode (.claude/skills), codexcli (.agents/skills),
+                   cursor (.cursor/skills), copilot (.github/skills)
+  --dry-run        Generate in a temporary directory and preview destination paths
+  --force          Overwrite differing files with these skill names
+  -h, --help       Show help
+
+Identical files are left alone. Differing files stop installation before any
+destination writes unless --force is set. Symlink destinations are always refused.
+User scope installs beneath your home directory: ~/.claude/skills,
+~/.agents/skills, ~/.cursor/skills, and ~/.copilot/skills.
+Generation uses an isolated config for both scopes.`;
 }

@@ -4,7 +4,7 @@
  * commit for the issue found in history, else the default branch.
  *
  * The commit-message grep matches both the current qualified-id suffix form
- * (`(PRD-006/issue-07)`) and the legacy pre-project form (`(PRD-006-07)`) —
+ * (`(SPEC-006/issue-07)`) and the legacy pre-project form (`(SPEC-006-07)`) —
  * commits made under the old globally-unique id scheme remain in history.
  */
 
@@ -19,7 +19,7 @@ function escapeRegExp(value: string): string {
 /**
  * Commit-message id strings that may reference this issue in history: the
  * qualifiedId itself, plus the legacy `<project>-<NN>` form derived from a
- * local id with a trailing number (e.g. `PRD-006/issue-07` → `PRD-006-07`).
+ * local id with a trailing number (e.g. `SPEC-006/issue-07` → `SPEC-006-07`).
  */
 function issueIdCandidates(qualifiedId: string): string[] {
   const candidates = [qualifiedId];

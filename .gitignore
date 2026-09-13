@@ -4,3 +4,6 @@ dist/
 *.log
 .loop/
 coverage/
+
+# Local source imports; maintained skills live in src/skills/
+/skill-bundles/

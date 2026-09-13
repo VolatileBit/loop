@@ -27,6 +27,34 @@ afterEach(() => {
   while (tempRoots.length > 0) rmSync(tempRoots.pop()!, { recursive: true, force: true });
 });
 
+describe('spec config names', () => {
+  it('reads legacy input keys into the canonical runtime shape', () => {
+    const root = makeRoot({ prdsDir: 'docs/prd', projects: { gallery: { prd: 'docs/prd/gallery.md' } } });
+    const config = loadConfig(root, { env: {} });
+    expect(config.specsDir).toBe('docs/prd');
+    expect(config.projects.gallery).toEqual({ spec: 'docs/prd/gallery.md' });
+    expect(config).not.toHaveProperty('prdsDir');
+  });
+
+  it('prefers canonical keys within a file, while preserving local overlay precedence', () => {
+    const root = makeRoot({ specsDir: 'specs', prdsDir: 'old',
+      projects: { gallery: { spec: 'specs/gallery.md', prd: 'old/gallery.md' } } });
+    const tracked = loadConfig(root, { env: {} });
+    expect(tracked.specsDir).toBe('specs');
+    expect(tracked.projects.gallery).toEqual({ spec: 'specs/gallery.md' });
+    writeFileSync(path.join(root, LOCAL_CONFIG_FILE_NAME), JSON.stringify({ prdsDir: '.planning',
+      projects: { gallery: { prd: '.planning/gallery.md' } } }));
+    const local = loadConfig(root, { env: {} });
+    expect(local.specsDir).toBe('.planning');
+    expect(local.projects.gallery).toEqual({ spec: '.planning/gallery.md' });
+  });
+
+  it('still validates values supplied with legacy names', () => {
+    expect(() => loadConfig(makeRoot({ prdsDir: 42 }), { env: {} })).toThrow(/specsDir/);
+    expect(() => loadConfig(makeRoot({ projects: { gallery: { prd: false } } }), { env: {} })).toThrow(/projects.gallery.spec/);
+  });
+});
+
 describe('loadConfig missing file', () => {
   it('returns built-in defaults when no loop.config.json exists', () => {
     const config = loadConfig(makeRoot(), { env: {} });
@@ -50,7 +78,7 @@ describe('loadConfig file parsing', () => {
       ],
       verifyCmd: 'pnpm test',
       issuesDir: 'tickets',
-      prdsDir: 'docs/prd',
+      specsDir: 'docs/specs',
       commitExcludePaths: ['.workspaces'],
       triageLabels: { done: 'agent-done', readyForAgent: 'ready-for-agent' },
       stages: { review: { agentCli: 'codex', model: 'gpt-5.5' } },
@@ -66,7 +94,7 @@ describe('loadConfig file parsing', () => {
     ]);
     expect(config.verifyCmd).toBe('pnpm test');
     expect(config.issuesDir).toBe('tickets');
-    expect(config.prdsDir).toBe('docs/prd');
+    expect(config.specsDir).toBe('docs/specs');
     expect(config.commitExcludePaths).toEqual(['.workspaces']);
     expect(config.triageLabels).toEqual({ done: 'agent-done', readyForAgent: 'ready-for-agent' });
     expect(config.stages).toEqual({ review: { agentCli: 'codex', model: 'gpt-5.5' } });
@@ -164,12 +192,12 @@ describe('loadConfig file parsing', () => {
     expect(loadConfig(makeRoot({}), { env: {} }).projects).toEqual({});
     const root = makeRoot({
       projects: {
-        'PRD-006': { verifyCmd: 'pnpm --filter web verify', prd: 'docs/prd/PRD-006-web.md' },
+        'PRD-006': { verifyCmd: 'pnpm --filter web verify', spec: 'docs/specs/PRD-006-web.md' },
         hotfixes: { verifyCmd: 'pnpm test' },
       },
     });
     expect(loadConfig(root, { env: {} }).projects).toEqual({
-      'PRD-006': { verifyCmd: 'pnpm --filter web verify', prd: 'docs/prd/PRD-006-web.md' },
+      'PRD-006': { verifyCmd: 'pnpm --filter web verify', spec: 'docs/specs/PRD-006-web.md' },
       hotfixes: { verifyCmd: 'pnpm test' },
     });
   });

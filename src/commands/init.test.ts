@@ -4,9 +4,28 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { cleanupFixtureRepos, createFixtureRepo } from '../git/test-helpers.js';
+import { parseCliArgs } from '../cli/args.js';
 import { ensureRuntimeStateIgnored, mergeInitConfig, parseDiscoveryReport } from './init.js';
 
 afterEach(cleanupFixtureRepos);
+
+it('accepts canonical init flags and the old input aliases', () => {
+  const canonical = parseCliArgs(['init', '--specs-dir', 'specs', '--project', 'gallery', '--project-spec', 'specs/gallery/spec.md'], {});
+  const legacy = parseCliArgs(['init', '--prds-dir', 'specs', '--project', 'gallery', '--project-prd', 'specs/gallery/spec.md'], {});
+  expect(canonical).toMatchObject({ command: 'init', flags: { specsDir: 'specs', projectSpec: 'specs/gallery/spec.md' } });
+  expect(legacy).toEqual(canonical);
+});
+
+it('writes canonical names when extending an older tracked config', () => {
+  const existing = { prdsDir: 'docs/prd', projects: { gallery: { prd: 'docs/prd/gallery.md', verifyCmd: 'make check' } } };
+  const answers = { agentCli: 'codex' as const, verifyCmd: null, issuesDir: null, specsDir: null, project: null };
+  const result = mergeInitConfig(existing, answers);
+  expect(result.config).toEqual({ agentCli: 'codex', specsDir: 'docs/prd',
+    projects: { gallery: { spec: 'docs/prd/gallery.md', verifyCmd: 'make check' } } });
+  expect(existing).toHaveProperty('prdsDir', 'docs/prd');
+  expect(result.written).toContain('specsDir');
+  expect(result.written).toContain('projects.gallery.spec');
+});
 
 describe('parseDiscoveryReport', () => {
   it('parses the discovery block, mapping "none" to null', () => {
@@ -16,17 +35,17 @@ describe('parseDiscoveryReport', () => {
       '## Loop discovery',
       'verify: pnpm typecheck && pnpm test',
       'issues-dir: none',
-      'prds-dir: docs/prd',
+      'specs-dir: docs/specs',
     ].join('\n');
     expect(parseDiscoveryReport(text)).toEqual({
       verifyCmd: 'pnpm typecheck && pnpm test',
       issuesDir: null,
-      prdsDir: 'docs/prd',
+      specsDir: 'docs/specs',
     });
   });
 
   it('degrades to an empty report when the block is missing', () => {
-    expect(parseDiscoveryReport('no block here')).toEqual({ verifyCmd: null, issuesDir: null, prdsDir: null });
+    expect(parseDiscoveryReport('no block here')).toEqual({ verifyCmd: null, issuesDir: null, specsDir: null });
   });
 });
 
@@ -35,7 +54,7 @@ describe('mergeInitConfig', () => {
     agentCli: 'claude-code' as const,
     verifyCmd: 'pnpm verify',
     issuesDir: 'work/issues',
-    prdsDir: 'docs/prd',
+    specsDir: 'docs/specs',
     project: null,
   };
 
@@ -45,9 +64,9 @@ describe('mergeInitConfig', () => {
       agentCli: 'claude-code',
       verifyCmd: 'pnpm verify',
       issuesDir: 'work/issues',
-      prdsDir: 'docs/prd',
+      specsDir: 'docs/specs',
     });
-    expect(merged.written.sort()).toEqual(['agentCli', 'issuesDir', 'prdsDir', 'verifyCmd']);
+    expect(merged.written.sort()).toEqual(['agentCli', 'issuesDir', 'specsDir', 'verifyCmd']);
     expect(merged.kept).toEqual([]);
   });
 
@@ -60,9 +79,9 @@ describe('mergeInitConfig', () => {
   });
 
   it('omits the default issues dir instead of writing noise', () => {
-    const merged = mergeInitConfig({}, { ...ANSWERS, issuesDir: 'issues', prdsDir: null });
+    const merged = mergeInitConfig({}, { ...ANSWERS, issuesDir: 'issues', specsDir: null });
     expect(merged.config).not.toHaveProperty('issuesDir');
-    expect(merged.config).not.toHaveProperty('prdsDir');
+    expect(merged.config).not.toHaveProperty('specsDir');
   });
 
   it('adds new projects entries but refuses to overwrite existing ones', () => {
@@ -115,4 +134,15 @@ describe('ensureRuntimeStateIgnored', () => {
     expect(readFileSync(path.join(root, '.gitignore'), 'utf8')).not.toContain('dist\n# loop');
     expect(readFileSync(path.join(root, '.gitignore'), 'utf8').startsWith('dist\n')).toBe(true);
   });
+});
+
+it('keeps projects from both tracked and local configuration on repeated init', () => {
+  const tracked = { projects: { existing: { verifyCmd: 'npm test' } } };
+  const effective = { projects: { existing: { verifyCmd: 'npm test' }, local: { spec: 'local.md' } } };
+  const answers = { agentCli: 'codex' as const, verifyCmd: null, issuesDir: null, specsDir: null, project: null,
+    projects: [{ name: 'new', spec: 'specs/new/spec.md' }] };
+  const merged = mergeInitConfig(tracked, answers, effective);
+  expect(merged.config.projects).toEqual({ existing: { verifyCmd: 'npm test' }, new: { spec: 'specs/new/spec.md' } });
+  expect(() => mergeInitConfig(tracked, { ...answers, projects: [{ name: 'local' }] }, effective)).toThrow(/already exists/);
+  expect(() => mergeInitConfig(merged.config, answers)).toThrow(/already exists/);
 });

@@ -58,7 +58,10 @@ export function parseBlockerRef(entry: string): BlockerRef | null {
   const id = last.replace(/\.md$/i, '');
   if (!id) return null;
 
-  return { project: segments.pop() ?? null, id };
+  let project = segments.pop() ?? null;
+  // In specs/<project>/issues/<id>.md, issues is a container, not the project.
+  if (project === 'issues' && segments.length > 0) project = segments.pop()!;
+  return { project, id };
 }
 
 /**

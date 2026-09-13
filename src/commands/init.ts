@@ -1,8 +1,8 @@
 /**
  * `loop init` — guided setup. Detects installed agent CLIs, optionally runs a
  * throwaway discovery session that learns the repo (candidate verify command —
- * validated by actually executing it — plus PRD and issue-dir candidates),
- * asks each config question with the findings as suggested defaults, and
+ * validated by actually executing it — plus spec and issue-dir candidates),
+ * combines that with filesystem path/project discovery, asks with suggested defaults, and
  * writes `loop.config.json`.
  *
  * Existing configs are extended, never clobbered: keys that already have a
@@ -17,26 +17,29 @@ import path from 'node:path';
 
 import { runAgent, extractAgentResultText } from '../agent/run-agent.js';
 import { resolveAgentProvider } from '../agent/providers/index.js';
-import { askChoice, askWithDefault, askYesNo, createAsker, type Asker } from '../cli/ask.js';
+import { askChoice, askWithDefault, createAsker, type Asker } from '../cli/ask.js';
 import type { InitFlags } from '../cli/args.js';
 import {
   CONFIG_FILE_NAME,
   DEFAULT_CONFIG,
   LOCAL_CONFIG_FILE_NAME,
   loadConfig,
+  mergeRawConfigs,
+  normalizeSpecConfig,
 } from '../config/load-config.js';
 import { AGENT_CLIS, type AgentCli } from '../config/types.js';
 import { isGitRepository } from '../git/status.js';
 import { failStop } from '../interrupt/shutdown.js';
 import { resolveRoot } from '../shared/paths.js';
 import { shell } from '../shared/shell.js';
+import { gatherPlanningAnswers, type InitProject } from './init-planning.js';
 
 export const LOOP_DISCOVERY_HEADING = '## Loop discovery';
 
 export type DiscoveryReport = {
   verifyCmd: string | null;
   issuesDir: string | null;
-  prdsDir: string | null;
+  specsDir: string | null;
 };
 
 /**
@@ -45,13 +48,13 @@ export type DiscoveryReport = {
  *   ## Loop discovery
  *   verify: <command or none>
  *   issues-dir: <dir or none>
- *   prds-dir: <dir or none>
+ *   specs-dir: <dir or none>
  *
  * Absent/`none` fields resolve to null; a missing block resolves to an empty
  * report (discovery is best-effort — init just falls back to plain defaults).
  */
 export function parseDiscoveryReport(text: string): DiscoveryReport {
-  const empty: DiscoveryReport = { verifyCmd: null, issuesDir: null, prdsDir: null };
+  const empty: DiscoveryReport = { verifyCmd: null, issuesDir: null, specsDir: null };
   const match = text.match(/## Loop discovery\s*\n([\s\S]*?)(?:\n## |$)/i);
   if (!match) return empty;
   const block = match[1] ?? '';
@@ -62,7 +65,7 @@ export function parseDiscoveryReport(text: string): DiscoveryReport {
     return value;
   };
 
-  return { verifyCmd: field('verify'), issuesDir: field('issues-dir'), prdsDir: field('prds-dir') };
+  return { verifyCmd: field('verify'), issuesDir: field('issues-dir'), specsDir: field('specs-dir') };
 }
 
 /** The subset of loop.config.json that init may write. */
@@ -70,8 +73,9 @@ export type InitAnswers = {
   agentCli: AgentCli;
   verifyCmd: string | null;
   issuesDir: string | null;
-  prdsDir: string | null;
-  project: { name: string; verifyCmd?: string; prd?: string } | null;
+  specsDir: string | null;
+  project: InitProject | null;
+  projects?: InitProject[];
 };
 
 export type MergeOutcome = {
@@ -92,9 +96,18 @@ export function mergeInitConfig(
   /** The tracked config merged with any machine-local overlay; defaults to `existing`. */
   effective: Record<string, unknown> = existing,
 ): MergeOutcome {
-  const config: Record<string, unknown> = { ...existing };
+  const config = normalizeSpecConfig(existing);
+  effective = normalizeSpecConfig(effective);
   const written: string[] = [];
   const kept: string[] = [];
+  if (Object.hasOwn(existing, 'prdsDir')) written.push('specsDir');
+  if (typeof existing.projects === 'object' && existing.projects !== null) {
+    for (const [name, entry] of Object.entries(existing.projects)) {
+      if (typeof entry === 'object' && entry !== null && Object.hasOwn(entry, 'prd')) {
+        written.push(`projects.${name}.spec`);
+      }
+    }
+  }
 
   const set = (key: string, value: unknown): void => {
     if (value === null || value === undefined) return;
@@ -111,9 +124,9 @@ export function mergeInitConfig(
   set('agentCli', answers.agentCli);
   set('verifyCmd', answers.verifyCmd);
   set('issuesDir', answers.issuesDir === 'issues' ? null : answers.issuesDir);
-  set('prdsDir', answers.prdsDir);
+  set('specsDir', answers.specsDir);
 
-  if (answers.project) {
+  for (const project of [...(answers.projects ?? []), ...(answers.project ? [answers.project] : [])]) {
     const projects =
       typeof config.projects === 'object' && config.projects !== null && !Array.isArray(config.projects)
         ? { ...(config.projects as Record<string, unknown>) }
@@ -122,17 +135,16 @@ export function mergeInitConfig(
       typeof effective.projects === 'object' && effective.projects !== null && !Array.isArray(effective.projects)
         ? (effective.projects as Record<string, unknown>)
         : {};
-    if (effectiveProjects[answers.project.name] !== undefined) {
+    if (Object.hasOwn(effectiveProjects, project.name) || Object.hasOwn(projects, project.name)) {
       throw new Error(
-        `projects.${answers.project.name} already exists in ${CONFIG_FILE_NAME} — init never overwrites an existing project entry; edit it directly.`,
+        `projects.${project.name} already exists in ${CONFIG_FILE_NAME} — init never overwrites an existing project entry; edit it directly.`,
       );
     }
-    projects[answers.project.name] = {
-      ...(answers.project.verifyCmd ? { verifyCmd: answers.project.verifyCmd } : {}),
-      ...(answers.project.prd ? { prd: answers.project.prd } : {}),
-    };
-    config.projects = projects;
-    written.push(`projects.${answers.project.name}`);
+    config.projects = { ...projects, [project.name]: {
+      ...(project.verifyCmd ? { verifyCmd: project.verifyCmd } : {}),
+      ...(project.spec ? { spec: project.spec } : {}),
+    } };
+    written.push(`projects.${project.name}`);
   }
 
   return { config, written, kept };
@@ -176,14 +188,14 @@ const DISCOVERY_PROMPT = [
   'Find:',
   '1. The single shell command that best verifies the repo (typecheck + tests, e.g. `pnpm verify`, `npm test`, `cargo test`). Prefer what package.json scripts / Makefile / CI configs actually use. Run it if it is safe and fast enough to confirm it executes.',
   '2. Where markdown issues/tasks live, if such a directory exists.',
-  '3. Where PRD/spec/feature documents live, if such a directory exists.',
+  '3. Where specs live, if such a directory exists.',
   '',
   'End your final response with **exactly** this block (use `none` when the repo has no answer):',
   '',
   LOOP_DISCOVERY_HEADING,
   'verify: <command or none>',
   'issues-dir: <repo-relative dir or none>',
-  'prds-dir: <repo-relative dir or none>',
+  'specs-dir: <repo-relative dir or none>',
 ].join('\n');
 
 /** Discovery session timeouts — a repo survey must not get 2 hours. */
@@ -216,7 +228,7 @@ export async function initCommand(flags: InitFlags): Promise<never> {
   const existing = readJson(configPath, CONFIG_FILE_NAME);
   const localPath = path.join(root, LOCAL_CONFIG_FILE_NAME);
   const local = readJson(localPath, LOCAL_CONFIG_FILE_NAME);
-  const effective = { ...existing, ...local };
+  const effective = mergeRawConfigs(existing, local);
   if (existsSync(configPath)) {
     console.log(`[loop] ${CONFIG_FILE_NAME} exists — init will only fill missing keys and add new projects entries.`);
   }
@@ -267,7 +279,7 @@ export async function initCommand(flags: InitFlags): Promise<never> {
   if (ignored.length > 0) {
     console.log(`[loop] added to .gitignore: ${ignored.join(', ')} (loop's runtime state must not enter the diff).`);
   }
-  console.log('[loop] next: create issues under issues/<project>/, then `loop run --dry-run`.');
+  console.log(`[loop] next: review project folders under ${String(merged.config.issuesDir ?? effective.issuesDir ?? 'issues')}/ (planning issues live in <project>/issues/), then \`loop run --dry-run\`.`);
   process.exit(0);
 }
 
@@ -286,13 +298,13 @@ function gatherFromFlags(
   return {
     agentCli,
     verifyCmd,
-    issuesDir: flags.issuesDir ?? null,
-    prdsDir: flags.prdsDir ?? null,
+    issuesDir: flags.issuesDir ?? (Object.keys(existing).length === 0 ? 'specs' : null),
+    specsDir: flags.specsDir ?? (Object.keys(existing).length === 0 ? 'specs' : null),
     project: flags.project
       ? {
           name: flags.project,
           ...(flags.projectVerifyCmd ? { verifyCmd: flags.projectVerifyCmd } : {}),
-          ...(flags.projectPrd ? { prd: flags.projectPrd } : {}),
+          ...(flags.projectSpec ? { spec: flags.projectSpec } : {}),
         }
       : null,
   };
@@ -352,7 +364,7 @@ async function gatherInteractive(
 
     // Discovery: a bounded throwaway session that learns the repo. Best-effort —
     // any failure just means the questions fall back to plain defaults.
-    let discovered: DiscoveryReport = { verifyCmd: null, issuesDir: null, prdsDir: null };
+    let discovered: DiscoveryReport = { verifyCmd: null, issuesDir: null, specsDir: null };
     if (!flags.noDiscovery) {
       console.log(`[loop] running a discovery session on ${agentCli} (bounded at 15m) — it inspects, never edits…`);
       try {
@@ -372,7 +384,7 @@ async function gatherInteractive(
         if (result.ok) {
           discovered = parseDiscoveryReport(extractAgentResultText(result));
           console.log(
-            `[loop] discovery: verify=${discovered.verifyCmd ?? 'none'}, issues-dir=${discovered.issuesDir ?? 'none'}, prds-dir=${discovered.prdsDir ?? 'none'}`,
+            `[loop] discovery: verify=${discovered.verifyCmd ?? 'none'}, issues-dir=${discovered.issuesDir ?? 'none'}, specs-dir=${discovered.specsDir ?? 'none'}`,
           );
         } else {
           console.warn('[loop] discovery session failed — continuing with plain defaults.');
@@ -385,48 +397,11 @@ async function gatherInteractive(
     const existingVerify = existing.verifyCmd as string | undefined;
     let verifyCmd: string | null = null;
     if (existingVerify === undefined) {
-      verifyCmd = await askVerifyCommand(asker, discovered.verifyCmd ?? undefined);
+      verifyCmd = flags.verifyCmd ?? await askVerifyCommand(asker, discovered.verifyCmd ?? undefined);
     }
 
-    const issuesDir =
-      existing.issuesDir !== undefined
-        ? null
-        : await askWithDefault(asker, 'Issues directory', discovered.issuesDir ?? 'issues');
-
-    const prdsDirAnswer =
-      existing.prdsDir !== undefined
-        ? 'none'
-        : await askWithDefault(asker, 'PRD/spec docs directory (or none)', discovered.prdsDir ?? 'none');
-
-    // Asked as a real yes/no: the old free-text form ("name, or none") made
-    // "no" a plausible answer, which would have been written as a project name.
-    let project: InitAnswers['project'] = null;
-    if (await askYesNo(asker, 'Add a projects.<name> override entry?', false)) {
-      const projectName = await askWithDefault(asker, 'Project folder name (under the issues directory)');
-      const projectVerify = await askWithDefault(
-        asker,
-        `Verify command for ${projectName} (or "none" to use the global one)`,
-        'none',
-      );
-      const projectPrd = await askWithDefault(
-        asker,
-        `PRD path or filename prefix for ${projectName} (or "none")`,
-        'none',
-      );
-      project = {
-        name: projectName,
-        ...(projectVerify.toLowerCase() !== 'none' ? { verifyCmd: projectVerify } : {}),
-        ...(projectPrd.toLowerCase() !== 'none' ? { prd: projectPrd } : {}),
-      };
-    }
-
-    return {
-      agentCli,
-      verifyCmd,
-      issuesDir,
-      prdsDir: prdsDirAnswer.toLowerCase() === 'none' ? null : prdsDirAnswer,
-      project,
-    };
+    const planning = await gatherPlanningAnswers(resolveRoot(), asker, flags, existing, discovered);
+    return { agentCli, verifyCmd, ...planning, project: null };
   } finally {
     asker.close();
   }

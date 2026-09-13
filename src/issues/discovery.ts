@@ -4,16 +4,18 @@
  * counts as an issue — there is no filename-pattern filter.
  *
  * Identity model:
- * - `project` = the immediate parent directory name (regardless of nesting depth).
+ * - `<root>/<project>/issues/` is a planning project's issue container. Only
+ *   files in that container are issues; sibling specs/maps are context.
+ * - Other layouts retain the immediate parent directory as `project`.
  * - `id` is unique only within its project.
  * - `qualifiedId` = `${project}/${id}` is the single global identity string.
  *
  * Discovery throws a descriptive Error (for the caller to failStop on) when
- * two files resolve to the same qualifiedId, or when a non-README `*.md`
+ * two files resolve to the same qualifiedId, or when an ID-bearing issue
  * sits directly in issuesDir with no project subdirectory.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { PIPELINE_STAGE_NAMES, type PipelineStageName } from '../config/types.js';
@@ -23,6 +25,7 @@ import {
   parseBlockedBy,
   parseFrontmatter,
   resolveIssueId,
+  resolveSpecPointer,
 } from './frontmatter.js';
 import type { IssueRecord } from './types.js';
 
@@ -40,6 +43,30 @@ export function walkMarkdownFiles(dir: string): string[] {
   return out;
 }
 
+/** Recognize a planning folder by its issues container, even before a spec exists. */
+export function hasIssueContainer(projectDir: string): boolean {
+  try { return statSync(path.join(projectDir, 'issues')).isDirectory(); } catch { return false; }
+}
+
+function collectIssueFiles(dir: string, issueRoot: string): { filePath: string; project: string }[] {
+  if (!existsSync(dir)) return [];
+  if (dir !== issueRoot && hasIssueContainer(dir)) {
+    return walkMarkdownFiles(path.join(dir, 'issues'))
+      .map((filePath) => ({ filePath, project: path.basename(dir) }));
+  }
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const filePath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      // A planning map stays out of execution even before the first issue is written.
+      if (entry.name === 'map' && existsSync(path.join(dir, 'spec.md'))) return [];
+      return collectIssueFiles(filePath, issueRoot);
+    }
+    return entry.isFile() && entry.name.endsWith('.md') && entry.name !== 'README.md'
+      ? [{ filePath, project: path.basename(dir) }]
+      : [];
+  });
+}
+
 function parseLastStage(value: string | undefined): PipelineStageName | undefined {
   if (value !== undefined && (PIPELINE_STAGE_NAMES as readonly string[]).includes(value)) {
     return value as PipelineStageName;
@@ -49,28 +76,20 @@ function parseLastStage(value: string | undefined): PipelineStageName | undefine
 
 export function discoverIssues(issuesDir: string, root: string = resolveRoot()): IssueRecord[] {
   const resolvedIssuesDir = path.resolve(root, issuesDir);
-  const files = walkMarkdownFiles(resolvedIssuesDir);
-
-  const flat = files.filter((filePath) => path.dirname(filePath) === resolvedIssuesDir);
-  if (flat.length > 0) {
-    throw new Error(
-      [
-        'Issue files must live inside a project subdirectory of the issues dir (e.g. issues/<feature>/<file>.md).',
-        'These files sit directly in the issues dir with no project:',
-        ...flat.map((filePath) => `  - ${path.relative(root, filePath)}`),
-        'Move each into a project folder (a repo with no feature grouping can use a single folder, e.g. issues/backlog/).',
-      ].join('\n'),
-    );
-  }
+  const files = collectIssueFiles(resolvedIssuesDir, resolvedIssuesDir);
 
   const issues: IssueRecord[] = [];
-  for (const filePath of files) {
+  for (const { filePath, project } of files) {
     const content = readFileSync(filePath, 'utf8');
     const { frontmatter, body } = parseFrontmatter(content);
     const id = resolveIssueId(frontmatter);
     if (!id) continue;
-
-    const project = path.basename(path.dirname(filePath));
+    if (path.dirname(filePath) === resolvedIssuesDir) {
+      throw new Error(
+        `Issue files must live inside a project subdirectory of the issue root (e.g. specs/<date-project>/issues/<file>.md or issues/<project>/<file>.md).\n` +
+        `${path.relative(root, filePath)} sits directly in the issue root with no project. Move it into a project folder.`,
+      );
+    }
     const record: IssueRecord = {
       id,
       project,
@@ -83,8 +102,8 @@ export function discoverIssues(issuesDir: string, root: string = resolveRoot()):
       acceptanceCriteria: parseAcceptanceCriteria(body),
       body,
     };
-    const prd = frontmatter.prd?.trim();
-    if (prd) record.prd = prd;
+    const spec = resolveSpecPointer(frontmatter);
+    if (spec) record.spec = spec;
     const lastStage = parseLastStage(frontmatter.lastStage);
     if (lastStage !== undefined) record.lastStage = lastStage;
     issues.push(record);

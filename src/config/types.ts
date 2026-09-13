@@ -71,8 +71,9 @@ export type WebhookConfig = {
 };
 
 /**
- * Per-project overrides, keyed by the project folder name under `issuesDir`.
- * A project groups related work (multiple features/fixes — e.g. one PRD);
+ * Per-project overrides, keyed by the project folder name under `issuesDir`
+ * (including the date prefix for a dated spec project).
+ * A project groups related work (multiple features/fixes — e.g. one spec);
  * in a monorepo different projects verify different packages.
  */
 export type ProjectOverride = {
@@ -96,8 +97,8 @@ export type ProjectOverride = {
   preflight?: PreflightConfig;
   /** Whether this project's sessions may replace `verifyCmd` for one issue (see `allowDeclaredVerify`). */
   allowDeclaredVerify?: boolean;
-  /** PRD doc for this project's prompts: a repo-relative path, or a filename prefix within `prdsDir`. Issue-level `prd:` frontmatter still wins. */
-  prd?: string;
+  /** spec doc for this project's prompts: a repo-relative path, or a filename prefix within `specsDir`. Issue-level `spec:` frontmatter still wins. */
+  spec?: string;
   /** Usage-limit policies for this project's issues; unset scopes fall back to the top-level `usageLimits`. */
   usageLimits?: Partial<UsageLimitsConfig>;
 };
@@ -233,14 +234,14 @@ export type LoopConfig = {
   installCmd: string | null;
   /** Files whose changes trigger `installCmd` during worktree sync. */
   dependencyFiles: string[];
-  /** Directory of PRD/feature docs for prompt context. `null` = PRD-context feature disabled. */
-  prdsDir: string | null;
+  /** Directory for implicit spec lookup. `null` disables lookup; explicit spec pointers still work. */
+  specsDir: string | null;
   /** Raw (possibly partial) role → label overrides; resolve via resolveTriageLabels(). */
   triageLabels: Partial<Record<TriageRole, string>>;
   maxParallelRuns: number;
   /** Per-stage agentCli/model overrides. Omitted stages/fields fall back to top-level. */
   stages: Partial<Record<StageName, StageAgentOverride>>;
-  /** Per-project verifyCmd/prd overrides, keyed by project folder name. Empty = global settings everywhere. */
+  /** Per-project verifyCmd/spec overrides, keyed by project folder name. Empty = global settings everywhere. */
   projects: Record<string, ProjectOverride>;
   /** Outbound notifications for completion/escalation signals. Empty = disabled. */
   webhooks: WebhookConfig[];

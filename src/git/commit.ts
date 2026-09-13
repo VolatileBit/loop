@@ -2,7 +2,7 @@
  * Loop's per-stage commits. Staging is config-driven: stage everything,
  * minus the repo's `commitExcludePaths` pathspecs (replacing the old
  * hardcoded allowlist). Commit messages reference issues by `qualifiedId`
- * (e.g. `feat: implement (PRD-006/issue-07)`).
+ * (e.g. `feat: implement (SPEC-006/issue-07)`).
  */
 
 import { spawnSync } from 'node:child_process';
@@ -33,7 +33,7 @@ function humanizeLabel(label: string): string {
 
 /**
  * Builds `<type>: <summary> (<qualifiedId>)`, e.g.
- * `feat: add per-task-type timeouts (PRD-006/issue-07)`. Uses the agent's
+ * `feat: add per-task-type timeouts (SPEC-006/issue-07)`. Uses the agent's
  * suggested type/summary when available, otherwise falls back to a type
  * inferred from the loop-internal stage label.
  */

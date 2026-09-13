@@ -7,6 +7,22 @@ import { cleanupTempDirs, makeTempRoot, writeIssueFile } from './test-helpers.js
 
 afterEach(cleanupTempDirs);
 
+it('prefers spec frontmatter and reads existing prd pointers without changing issue identity', () => {
+  const root = makeTempRoot();
+  writeIssueFile(root, 'specs/20260913-gallery/issues/01-upload.md', {
+    frontmatter: { id: '01-upload', spec: 'specs/20260913-gallery/spec.md', prd: 'old.md' },
+  });
+  writeIssueFile(root, 'issues/PRD-006/issue-01.md', {
+    frontmatter: { id: 'issue-01', prd: 'docs/prd/original.md' },
+  });
+  expect(discoverIssues('specs', root)[0]).toMatchObject({
+    qualifiedId: '20260913-gallery/01-upload', spec: 'specs/20260913-gallery/spec.md',
+  });
+  const legacy = discoverIssues('issues', root)[0]!;
+  expect(legacy).toMatchObject({ qualifiedId: 'PRD-006/issue-01', spec: 'docs/prd/original.md' });
+  expect(legacy).not.toHaveProperty('prd');
+});
+
 describe('walkMarkdownFiles', () => {
   it('finds any *.md recursively except README.md, with no filename-pattern filter', () => {
     const root = makeTempRoot();
@@ -116,19 +132,49 @@ describe('discoverIssues project and identity', () => {
 });
 
 describe('discoverIssues optional frontmatter fields', () => {
-  it('captures prd and a valid lastStage; ignores an invalid lastStage', () => {
+  it('captures spec and a valid lastStage; ignores an invalid lastStage', () => {
     const root = makeTempRoot();
     writeIssueFile(root, 'issues/hotfixes/issue-01.md', {
-      frontmatter: { id: 'issue-01', triage: 'ready', prd: 'PRD-006', lastStage: 'reviewFix' },
+      frontmatter: { id: 'issue-01', triage: 'ready', spec: 'PRD-006', lastStage: 'reviewFix' },
     });
     writeIssueFile(root, 'issues/hotfixes/issue-02.md', {
       frontmatter: { id: 'issue-02', triage: 'ready', lastStage: 'not-a-stage' },
     });
 
     const issues = discoverIssues('issues', root);
-    expect(issues[0]!.prd).toBe('PRD-006');
+    expect(issues[0]!.spec).toBe('PRD-006');
     expect(issues[0]!.lastStage).toBe('reviewFix');
-    expect(issues[1]!.prd).toBeUndefined();
+    expect(issues[1]!.spec).toBeUndefined();
     expect(issues[1]!.lastStage).toBeUndefined();
+  });
+});
+
+describe('dated spec project layout', () => {
+  it('uses the dated project name and ignores sibling specs and decision maps', () => {
+    const root = makeTempRoot();
+    for (const project of ['20260913-gallery', '20260914-gallery']) {
+      writeIssueFile(root, `specs/${project}/spec.md`, { frontmatter: { id: 'spec', triage: 'ready' } });
+      writeIssueFile(root, `specs/${project}/map/01-question.md`, { frontmatter: { id: '01-question', triage: 'ready' } });
+      writeIssueFile(root, `specs/${project}/issues/01-upload.md`, { frontmatter: { id: '01-upload', triage: 'ready' } });
+    }
+    expect(discoverIssues('specs', root).map((issue) => issue.qualifiedId)).toEqual([
+      '20260913-gallery/01-upload', '20260914-gallery/01-upload',
+    ]);
+  });
+
+  it('supports custom roots and keeps planning-only maps out of execution', () => {
+    const root = makeTempRoot();
+    writeIssueFile(root, 'planning/20260913-gallery/spec.md', { body: '# Gallery' });
+    writeIssueFile(root, 'planning/20260913-gallery/map/01-question.md', { frontmatter: { id: '01-question', triage: 'ready' } });
+    writeIssueFile(root, 'planning/20260914-export/issues/01-export.md', { frontmatter: { id: '01-export', triage: 'ready' } });
+    writeIssueFile(root, 'planning/README-overview.md', { body: '# Planning index' });
+    expect(discoverIssues('planning', root).map((issue) => issue.qualifiedId)).toEqual(['20260914-export/01-export']);
+  });
+
+  it('still rejects duplicate IDs inside one nested issue container', () => {
+    const root = makeTempRoot();
+    writeIssueFile(root, 'specs/20260913-gallery/issues/01-upload.md', { frontmatter: { id: '01-upload', triage: 'ready' } });
+    writeIssueFile(root, 'specs/20260913-gallery/issues/duplicate.md', { frontmatter: { id: '01-upload', triage: 'ready' } });
+    expect(() => discoverIssues('specs', root)).toThrow(/Duplicate issue id[\s\S]*20260913-gallery\/01-upload/);
   });
 });

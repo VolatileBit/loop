@@ -47,7 +47,7 @@ describe('loop.config.example.json', () => {
     const shown = new Set(Object.values(projects).flatMap((entry) => Object.keys(entry)));
     for (const field of [
       'verifyCmd',
-      'prd',
+      'spec',
       'model',
       'effort',
       'env',

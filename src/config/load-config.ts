@@ -32,7 +32,7 @@ export const CONFIG_FILE_NAME = 'loop.config.json';
 
 /**
  * Machine-local overlay, read *over* the tracked config. A project entry often
- * names an in-progress branch, a machine-specific command and a local PRD path
+ * names an in-progress branch, a machine-specific command and a local spec path
  * — temporary, and belonging to whoever runs loop — so a repo can commit its
  * shared settings and keep those out of git. Nested objects merge one level
  * deep (a `projects` entry here adds to the tracked map rather than replacing
@@ -69,7 +69,7 @@ export const DEFAULT_CONFIG: LoopConfig = {
   sandboxNetworkAccess: false,
   installCmd: null,
   dependencyFiles: ['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'],
-  prdsDir: null,
+  specsDir: null,
   triageLabels: {},
   maxParallelRuns: 1,
   stages: {},
@@ -132,7 +132,7 @@ const KNOWN_KEYS = new Set<string>([
   'sandboxNetworkAccess',
   'installCmd',
   'dependencyFiles',
-  'prdsDir',
+  'specsDir',
   'triageLabels',
   'maxParallelRuns',
   'stages',
@@ -318,9 +318,9 @@ function parseProjects(raw: Record<string, unknown>): Record<string, ProjectOver
         override.allowDeclaredVerify = fieldValue;
         continue;
       }
-      if (field !== 'verifyCmd' && field !== 'prd' && field !== 'model' && field !== 'effort') {
+      if (field !== 'verifyCmd' && field !== 'spec' && field !== 'model' && field !== 'effort') {
         throw configError(
-          `"projects.${name}" has unknown field "${field}" (valid fields: verifyCmd, prd, model, effort, env, preflight, allowDeclaredVerify, usageLimits)`,
+          `"projects.${name}" has unknown field "${field}" (valid fields: verifyCmd, spec, model, effort, env, preflight, allowDeclaredVerify, usageLimits)`,
         );
       }
       if (typeof fieldValue !== 'string' || !fieldValue.trim()) {
@@ -512,12 +512,31 @@ function readRawConfig(filePath: string, fileName: string): Record<string, unkno
 /** Keys whose objects merge one level deep, so an overlay entry adds rather than replaces. */
 const SHALLOW_MERGED_KEYS = new Set(['projects', 'stages', 'triageLabels', 'env', 'usageLimits', 'goal']);
 
-function mergeRawConfigs(
+/** Normalize old input keys before merging layers; runtime and init use only spec names. */
+export function normalizeSpecConfig(raw: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...raw };
+  if (normalized.specsDir === undefined && normalized.prdsDir !== undefined) {
+    normalized.specsDir = normalized.prdsDir;
+  }
+  delete normalized.prdsDir;
+  if (typeof raw.projects === 'object' && raw.projects !== null && !Array.isArray(raw.projects)) {
+    normalized.projects = Object.fromEntries(Object.entries(raw.projects).map(([name, entry]) => {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return [name, entry];
+      const project: Record<string, unknown> = { ...entry };
+      if (project.spec === undefined && project.prd !== undefined) project.spec = project.prd;
+      delete project.prd;
+      return [name, project];
+    }));
+  }
+  return normalized;
+}
+
+export function mergeRawConfigs(
   base: Record<string, unknown>,
   overlay: Record<string, unknown>,
 ): Record<string, unknown> {
-  const merged: Record<string, unknown> = { ...base };
-  for (const [key, value] of Object.entries(overlay)) {
+  const merged = normalizeSpecConfig(base);
+  for (const [key, value] of Object.entries(normalizeSpecConfig(overlay))) {
     const existing = merged[key];
     const mergeable =
       SHALLOW_MERGED_KEYS.has(key) &&
@@ -590,8 +609,8 @@ function readConfigFile(root: string): FileConfig {
   if (installCmd !== undefined) config.installCmd = installCmd;
   const dependencyFiles = expectStringArray(raw, 'dependencyFiles');
   if (dependencyFiles !== undefined) config.dependencyFiles = dependencyFiles;
-  const prdsDir = expectString(raw, 'prdsDir');
-  if (prdsDir !== undefined) config.prdsDir = prdsDir;
+  const specsDir = expectString(raw, 'specsDir');
+  if (specsDir !== undefined) config.specsDir = specsDir;
   const triageLabels = parseTriageLabels(raw);
   if (triageLabels !== undefined) config.triageLabels = triageLabels;
   const maxParallelRuns = expectNumber(raw, 'maxParallelRuns');

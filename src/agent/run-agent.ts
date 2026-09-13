@@ -138,7 +138,7 @@ export type RunAgentOptions = {
   cwd: string;
   /** Combined stream log destination (parent dirs are created). */
   logPath: string;
-  /** e.g. "PRD-006/issue-07-implement" — used in log prefixes. */
+  /** e.g. "SPEC-006/issue-07-implement" — used in log prefixes. */
   stageLabel: string;
   /** Echo the live stream to stdout. Pass false when maxParallelRuns > 1. */
   liveOutput?: boolean;

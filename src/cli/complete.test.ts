@@ -33,6 +33,7 @@ describe('resolveCompletions: subcommands', () => {
       'goal',
       'goals',
       'init',
+      'install',
       'list-runs',
       'completion',
     ]);
@@ -132,5 +133,16 @@ describe('resolveCompletions: never throws', () => {
     expect(resolveCompletions(['frobnicate', ''], '/nonexistent')).toEqual([]);
     expect(resolveCompletions(['run', '--model', ''], '/nonexistent')).toEqual([]);
     expect(resolveCompletions(['review', '--file', ''], '/nonexistent')).toEqual([]);
+  });
+});
+
+
+describe('planning skill installation completion', () => {
+  it('offers the bundle, options, and comma-separated targets without loading config', () => {
+    expect(resolveCompletions(['install', 'pla'], '/nonexistent')).toEqual(['planning-skills']);
+    expect(resolveCompletions(['install', 'planning-skills', '--t'], '/nonexistent')).toEqual(['--targets']);
+    expect(resolveCompletions(['install', 'planning-skills', '--targets', 'codexcli,cu'], '/nonexistent')).toEqual(['codexcli,cursor']);
+    expect(resolveCompletions(['install', 'planning-skills', '--scope', 'u'], '/nonexistent')).toEqual(['user']);
+    expect(resolveCompletions(['install', 'planning-skills', ''], '/nonexistent')).toEqual([]);
   });
 });

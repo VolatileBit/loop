@@ -4,9 +4,18 @@
   "private": false,
   "description": "Autonomous issue-runner: drives a coding agent through implement → verify → review cycles against a repo's markdown issue tracker, in an isolated git worktree.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VolatileBit/loop.git"
+  },
+  "homepage": "https://github.com/VolatileBit/loop#readme",
+  "bugs": "https://github.com/VolatileBit/loop/issues",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   },
   "bin": {
     "loop": "./bin/loop.js"
@@ -14,7 +23,8 @@
   "files": [
     "bin",
     "src",
-    "README.md"
+    "README.md",
+    "loop.config.example.json"
   ],
   "scripts": {
     "loop": "tsx src/bin.ts",
@@ -25,6 +35,7 @@
     "smoke:gap": "node scripts/gap-live-smoke.mjs"
   },
   "dependencies": {
+    "rulesync": "16.29.0",
     "tsx": "^4.22.3"
   },
   "devDependencies": {

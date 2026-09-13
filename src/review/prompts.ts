@@ -2,8 +2,8 @@
  * Implement / review prompt builders. Skill directives are config-driven
  * (`reviewSkill`/`tddSkill`) — when unset, the directive lines are omitted
  * and the review prompt asks the agent to review against the issue spec and
- * repo conventions directly. An optional `prdRelPath` adds the PRD/feature
- * context line resolved by issues/resolve-prd.ts.
+ * repo conventions directly. An optional `specRelPath` adds the spec
+ * context line resolved by issues/resolve-spec.ts.
  */
 
 import path from 'node:path';
@@ -12,6 +12,7 @@ import { DEFAULT_TRIAGE_LABELS } from '../config/triage-labels.js';
 import { buildLoopCommitMessage, resolveImplementCommitLabel, LOOP_COMMIT_HEADING } from '../git/commit.js';
 import { formatReviewFixedPoint } from '../git/fixed-point.js';
 import { LOOP_HANDOFF_HEADING } from '../handoff/handoff.js';
+import { readRuntimeSkill } from '../skills/bundled.js';
 import { buildBuiltinReviewSkill } from '../skills/code-review.js';
 import { BUILTIN_TDD_SKILL } from '../skills/tdd.js';
 import {
@@ -33,6 +34,8 @@ export const BUILTIN_SKILL = 'builtin';
 export const LOOP_VERDICT_HEADING = '## Loop verdict';
 export const LOOP_NITS_HEADING = '## Loop nits';
 
+const HANDOFF_SKILL = readRuntimeSkill('loop-handoff');
+
 /** The slice of an issue both prompt builders need. */
 export type PromptIssue = {
   qualifiedId: string;
@@ -46,8 +49,8 @@ export type PromptContext = {
   reviewSkill?: string | null;
   /** Skill directive for implement prompts (e.g. "/tdd"). Null/unset = omit. */
   tddSkill?: string | null;
-  /** Repo-relative PRD/feature doc path (issues/resolve-prd.ts). Null/unset = omit the context line. */
-  prdRelPath?: string | null;
+  /** Repo-relative spec doc path (issues/resolve-spec.ts). Null/unset = omit the context line. */
+  specRelPath?: string | null;
   /** Label strings surfaced in prompt instructions (defaults to loop's generic set). */
   labels?: { inProgress: string; done: string };
   /**
@@ -95,15 +98,15 @@ function promptLabels(context?: PromptContext): { inProgress: string; done: stri
   };
 }
 
-function featureContextLine(prdRelPath: string | null | undefined, verb: string): string | null {
-  if (!prdRelPath) return null;
+function featureContextLine(specRelPath: string | null | undefined, verb: string): string | null {
+  if (!specRelPath) return null;
   // An absolute path means the doc is untracked and therefore lives only in the
   // main checkout — say so, or a session in a worktree reads it as a repo path
   // and re-anchors its sense of the project root there.
-  const note = path.isAbsolute(prdRelPath)
+  const note = path.isAbsolute(specRelPath)
     ? ' It sits outside this working tree — read it at that absolute path, and make no edits there.'
     : '';
-  return `- Feature context: read \`${prdRelPath}\` for the parent PRD/feature description before ${verb}.${note}`;
+  return `- Feature context: read \`${specRelPath}\` for the parent spec before ${verb}.${note}`;
 }
 
 /**
@@ -134,7 +137,7 @@ function goalImplementLines(goal: NonNullable<PromptContext['goal']>): string[] 
   return [
     '## Goal mode',
     '',
-    `This issue serves a goal, not a PRD: read the goal at \`${goal.goalDocPath}\` (absolute path) before implementing.`,
+    `The goal is the spec for this issue: read it at \`${goal.goalDocPath}\` (absolute path) before implementing.`,
     '',
     '**Verify contract — you choose the gate.** There is no configured verify command for goal work:',
     `- Decide the command that best proves this issue's work (specific enough to fail if the work is wrong, cheap enough to run repeatedly), and write it — one line, exactly as it should be run, bare (no \`cd\`, no pipes) — to \`${goal.declareVerifyPath}\` with your file tools.`,
@@ -165,7 +168,7 @@ export function buildReviewPrompt(
   const fixedPoint = formatReviewFixedPoint(options.fixedPoint, issue.qualifiedId);
   const reviewSkill = context.reviewSkill ?? null;
   const builtinSkill = reviewSkill === BUILTIN_SKILL;
-  const prdLine = featureContextLine(context.prdRelPath, 'reviewing');
+  const specLine = featureContextLine(context.specRelPath, 'reviewing');
   const historyBlock = options.history
     ? formatReviewConvergenceHistory(options.history)
     : '';
@@ -187,7 +190,7 @@ export function buildReviewPrompt(
     'This is a **review-only** session in a fresh context window. Do not implement code changes.',
     '',
     `Spec source: ${issue.relPath}`,
-    ...(prdLine ? [prdLine] : []),
+    ...(specLine ? [specLine] : []),
     ...(context.goal
       ? [
           `- Goal context: this work serves the goal at \`${context.goal.goalDocPath}\` (absolute path — read it).`,
@@ -366,7 +369,7 @@ export function buildImplementPrompt(
   const labels = promptLabels(context);
   const reviewSkill = context.reviewSkill === BUILTIN_SKILL ? null : (context.reviewSkill ?? null);
   const tddSkill = context.tddSkill ?? null;
-  const prdLine = featureContextLine(context.prdRelPath, 'implementing');
+  const specLine = featureContextLine(context.specRelPath, 'implementing');
 
   const implementCommitLabel = resolveImplementCommitLabel({
     commitLabel,
@@ -479,7 +482,7 @@ export function buildImplementPrompt(
     ...(context.declaredVerify ? declaredVerifyLines(context.declaredVerify) : []),
     `Implement the work described in ${issue.relPath} (${issue.qualifiedId}: ${issue.title}).`,
     '',
-    'Implement the work described by the user in the PRD or issues.',
+    'Implement the work described by the user in the spec or issues.',
     '',
     ...(tddSkill === BUILTIN_SKILL
       ? [BUILTIN_TDD_SKILL, '']
@@ -494,7 +497,7 @@ export function buildImplementPrompt(
     'Headless mode: this is a non-interactive agent session. Do not prompt for confirmations.',
     'Project:',
     `- Work on this issue only: ${issue.relPath}`,
-    ...(prdLine ? [prdLine] : []),
+    ...(specLine ? [specLine] : []),
     '- Read the root `CONTEXT.md` (a map/index of domain vocab and pointers to package-level context) and any `CONTEXT.md` in the packages/apps you are about to touch — this exists to save you re-deriving known architecture.',
     ...(context.projectNotesPath
       ? [
@@ -519,8 +522,10 @@ export function buildImplementPrompt(
         ]
       : []),
     '',
+    HANDOFF_SKILL,
+    '',
     'When complete:',
-    '- Check off every acceptance criterion (`- [x]`).',
+    '- Check off acceptance criteria (`- [x]`) only when verified; leave incomplete or blocked criteria unchecked and explain what remains.',
     `- Leave frontmatter \`triage: ${labels.inProgress}\` — loop sets \`${labels.done}\` only after external verify and review pass.`,
     `- Do not set \`${labels.done}\` yourself; premature \`${labels.done}\` causes misleading run summaries.`,
     '- End your final response with these two blocks so loop can label its fallback commit and hand off context to the next stage:',

@@ -1,5 +1,5 @@
 /**
- * `loop goal` — goal mode: no PRD, no curated backlog. Hand loop an outcome
+ * `loop goal` — goal mode: no spec, no curated backlog. Hand loop an outcome
  * and it loops plan → drain → evaluate rounds (src/goal/run-goal.ts) until a
  * fresh session judges the goal reached. `loop goal <slug>` resumes an
  * existing goal exactly where it stopped; `loop goals` lists them.

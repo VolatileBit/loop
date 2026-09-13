@@ -22,7 +22,7 @@ function git(args: string[], cwd: string): GitResult {
 
 export const ISSUE_BRANCH_PREFIX = 'loop/issue/';
 
-/** `PRD-006/issue-07` → `PRD-006-issue-07` (for filesystem-safe dir names). */
+/** `SPEC-006/issue-07` → `SPEC-006-issue-07` (for filesystem-safe dir names). */
 export function flattenQualifiedId(qualifiedId: string): string {
   return qualifiedId.replace(/\//g, '-');
 }
@@ -31,7 +31,7 @@ export function resolveIssueBranchName(qualifiedId: string): string {
   return `${ISSUE_BRANCH_PREFIX}${qualifiedId}`;
 }
 
-/** Sibling dir next to the main repo, e.g. `../polyweave-loop-PRD-006-issue-07`. */
+/** Sibling dir next to the main repo, e.g. `../polyweave-loop-SPEC-006-issue-07`. */
 export function resolveIssueWorktreeDir(mainRoot: string, qualifiedId: string): string {
   return path.resolve(mainRoot, '..', `${path.basename(mainRoot)}-loop-${flattenQualifiedId(qualifiedId)}`);
 }

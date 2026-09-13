@@ -14,6 +14,7 @@ import {
   goalHelp,
   goalsHelp,
   initHelp,
+  installHelp,
   listRunsHelp,
   mainHelp,
   loopVersion,
@@ -26,6 +27,7 @@ import { fixNitsCommand } from './commands/fix-nits.js';
 import { goalCommand, goalsCommand } from './commands/goal.js';
 import { archiveCommand } from './commands/archive.js';
 import { polishCommand } from './commands/polish.js';
+import { installCommand } from './commands/install.js';
 import { initCommand } from './commands/init.js';
 import { listRunsCommand } from './commands/list-runs.js';
 import { reviewCommand } from './commands/review.js';
@@ -152,6 +154,14 @@ async function dispatch(parsed: ParsedCli): Promise<never> {
       process.exit(0);
     }
     goalsCommand(resolveRoot());
+  }
+
+  if (parsed.command === 'install') {
+    if (parsed.flags.help) {
+      console.log(installHelp());
+      process.exit(0);
+    }
+    return installCommand(parsed.flags);
   }
 
   if (parsed.command === 'init') {

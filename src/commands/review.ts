@@ -108,7 +108,7 @@ export async function reviewCommand(flags: ReviewFlags): Promise<never> {
     withFix: flags.fix,
     verifyCmd,
     liveOutput: !flags.quiet && config.maxParallelRuns === 1,
-    // Issue-independent prompt context (PRD resolution is per-issue and stays
+    // Issue-independent prompt context (spec resolution is per-issue and stays
     // out of batch mode); verifyCmd lets fix prompts state the in-session-proof deal.
     promptContext: {
       reviewSkill: config.reviewSkill,

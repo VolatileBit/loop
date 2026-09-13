@@ -84,7 +84,7 @@ export type PlanPromptOptions = {
 
 export function buildPlanPrompt(options: PlanPromptOptions): string {
   return [
-    `Plan the next batch of work toward a goal. Read the goal at \`${options.goalDocPath}\` — it is the spec (there is no PRD).`,
+    `Plan the next batch of work toward a goal. Read the goal at \`${options.goalDocPath}\` — it is the spec for this work.`,
     '',
     'This session runs in the repository the goal targets, at its current (merged) state. Investigate the code as it is now — do not assume earlier plans described the present.',
     '',

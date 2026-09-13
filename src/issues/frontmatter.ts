@@ -30,6 +30,12 @@ export function resolveIssueId(frontmatter: Record<string, string>): string | nu
   return id?.trim() ? id.trim() : null;
 }
 
+/** Prefer the canonical spec pointer while accepting existing issue files. */
+export function resolveSpecPointer(frontmatter: Record<string, string>): string | null {
+  const spec = frontmatter.spec ?? frontmatter.prd;
+  return spec?.trim() ? spec.trim() : null;
+}
+
 export function parseBlockedBy(body: string): string[] {
   const section = body.match(/## Blocked by\s*\n+([\s\S]*?)(?=\n## |\n*$)/)?.[1];
   if (section === undefined) return [];

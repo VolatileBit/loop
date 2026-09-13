@@ -219,3 +219,11 @@ describe('pickNextIssue project-aware semantics', () => {
     expect(pickNextIssue([a, b], LABELS)?.qualifiedId).toBe('PRD-A/issue-01');
   });
 });
+
+it('resolves cross-project dependency paths through nested issues containers', () => {
+  const prerequisite = makeIssue({ project: '20260913-gallery', id: '01-upload', triage: LABELS.done });
+  const waiting = makeIssue({ project: '20260914-export', id: '01-export', blockedBy: ['[Upload](specs/20260913-gallery/issues/01-upload.md)'] });
+  // A same-named local issue must not intercept an explicit path to the other project.
+  const local = makeIssue({ project: waiting.project, id: '01-upload', triage: LABELS.readyForAgent });
+  expect(pickNextIssue([prerequisite, waiting, local], LABELS)?.qualifiedId).toBe('20260914-export/01-export');
+});

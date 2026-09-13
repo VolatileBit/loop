@@ -32,7 +32,7 @@ export function formatWorkerElapsed(ms: number): string {
  * worker.
  *
  *   [loop] 3/5 workers active
- *     PRD-006/issue-07  implement     2m14s  log: .loop/runs/PRD-006/...
+ *     SPEC-006/issue-07  implement     2m14s  log: .loop/runs/SPEC-006/...
  */
 export function formatWorkerStatusBlock(workers: WorkerStatusEntry[], maxWorkers: number): string {
   const header = `[loop] ${workers.length}/${maxWorkers} workers active`;

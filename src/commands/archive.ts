@@ -5,6 +5,7 @@
  *
  *   <archiveDir>/<date>-<project>/
  *     issues/           — the project's issue files
+ *     planning/         — alternatively, the complete spec project with issues/ and map/
  *     runs/             — .loop/runs/<project>/
  *     handoffs/         — .loop/handoffs/<project>/
  *     notes.md          — .loop/notes/<project>.md
@@ -28,7 +29,7 @@ import type { TriageLabels } from '../config/triage-labels.js';
 import { RUNNABLE_TRIAGE_ROLES, issueTriageRole } from '../issues/lifecycle.js';
 import type { IssueRecord } from '../issues/types.js';
 import { failStop, registerShutdownHandlers } from '../interrupt/shutdown.js';
-import { discoverIssues } from '../issues/discovery.js';
+import { discoverIssues, hasIssueContainer } from '../issues/discovery.js';
 import { listProjects } from '../issues/project.js';
 import { acquireInvocationLock } from '../shared/lock.js';
 import { handoffsDir, runsDir } from '../shared/paths.js';
@@ -128,11 +129,13 @@ export function planArchive(options: {
     };
   }
 
+  const projectDir = path.resolve(root, config.issuesDir, project);
+  const planningLayout = hasIssueContainer(projectDir);
   const candidates: ArchiveMove[] = [
     {
-      from: path.resolve(root, config.issuesDir, project),
-      to: path.join(destination, 'issues'),
-      label: 'issue files',
+      from: projectDir,
+      to: path.join(destination, planningLayout ? 'planning' : 'issues'),
+      label: planningLayout ? 'spec, issues, and planning context' : 'issue files',
     },
     { from: path.join(runsDir(root), project), to: path.join(destination, 'runs'), label: 'run artifacts' },
     {

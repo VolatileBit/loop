@@ -3,7 +3,7 @@
  *
  * `copilot -p <prompt> --output-format json` runs non-interactively and emits
  * JSONL — one JSON object per line. Event shapes were probed against copilot
- * 1.0.71 (see the copilot-provider PRD):
+ * 1.0.71 (see the copilot-provider spec):
  *
  *   {"type":"assistant.reasoning","data":{"content":"…"},"id":"…",…}            // consolidated
  *   {"type":"assistant.message","data":{"content":"…","outputTokens":42},…}     // consolidated

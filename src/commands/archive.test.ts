@@ -155,3 +155,22 @@ describe('executeArchive', () => {
     expect(lines).toContain('loop.project.json');
   });
 });
+
+it('archives a nested planning project together with its spec and map', () => {
+  const root = createFixtureRepo();
+  const project = '20260913-gallery';
+  const projectDir = path.join(root, 'specs', project);
+  mkdirSync(path.join(projectDir, 'issues'), { recursive: true });
+  mkdirSync(path.join(projectDir, 'map'));
+  writeFileSync(path.join(projectDir, 'spec.md'), '# Gallery\n');
+  writeFileSync(path.join(projectDir, 'map/01-format.md'), '# Formats\n');
+  writeFileSync(path.join(projectDir, 'issues/01-upload.md'), '---\nid: 01-upload\ntriage: done\n---\n');
+  const config = { issuesDir: 'specs', projects: {}, archiveDir: 'archive' };
+  const result = planArchive({ root, project, config, issues: discoverIssues('specs', root), labels: LABELS, now: NOW });
+  if (!result.ok) throw new Error(result.reason);
+  executeArchive(root, result.plan);
+  expect(readFileSync(path.join(result.plan.destination, 'planning/spec.md'), 'utf8')).toBe('# Gallery\n');
+  expect(existsSync(path.join(result.plan.destination, 'planning/issues/01-upload.md'))).toBe(true);
+  expect(existsSync(path.join(result.plan.destination, 'planning/map/01-format.md'))).toBe(true);
+  expect(discoverIssues('specs', root)).toEqual([]);
+});

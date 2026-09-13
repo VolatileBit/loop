@@ -83,13 +83,13 @@ describe('buildReviewPrompt', () => {
     expect(prompt).toContain('## Loop verdict');
   });
 
-  it('adds the feature-context line when a PRD path is given', () => {
+  it('adds the feature-context line when a spec path is given', () => {
     const prompt = buildReviewPrompt(
       makeIssue({ id: 'issue-10' }),
       { fixedPoint: 'main' },
-      { prdRelPath: 'docs/prd/PRD-001-feature.md' },
+      { specRelPath: 'docs/specs/PRD-001-feature.md' },
     );
-    expect(prompt).toContain('Feature context: read `docs/prd/PRD-001-feature.md`');
+    expect(prompt).toContain('Feature context: read `docs/specs/PRD-001-feature.md`');
   });
 
   it('mentions the review round after round 1', () => {
@@ -146,13 +146,13 @@ describe('buildImplementPrompt', () => {
     expect(prompt).toContain('Do not run a review pass in this session');
   });
 
-  it('adds the feature-context line when a PRD path is given', () => {
+  it('adds the feature-context line when a spec path is given', () => {
     const prompt = buildImplementPrompt(
       makeIssue({ id: 'issue-01' }),
       {},
-      { prdRelPath: 'docs/prd/PRD-001-feature.md' },
+      { specRelPath: 'docs/specs/PRD-001-feature.md' },
     );
-    expect(prompt).toContain('Feature context: read `docs/prd/PRD-001-feature.md`');
+    expect(prompt).toContain('Feature context: read `docs/specs/PRD-001-feature.md`');
   });
 
   it('includes review feedback when fixing blocking findings', () => {
@@ -341,7 +341,10 @@ describe('shared project notes in prompts', () => {
     expect(verifyFix).not.toContain('Update the shared project notes');
 
     const without = buildImplementPrompt(makeIssue({ id: 'issue-01' }), {}, {});
-    expect(without).not.toContain('shared project notes');
+    // Generic handoff guidance is bundled, but no read/write target is invented.
+    expect(without).not.toContain('Also read the shared project notes');
+    expect(without).not.toContain('Update the shared project notes');
+    expect(without).not.toContain(NOTES);
   });
 
   it('review prompts read the notes and allow correcting them as the read-only exception', () => {

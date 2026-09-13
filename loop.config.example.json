@@ -11,7 +11,7 @@
   },
   "allowDeclaredVerify": true,
   "archiveDir": "docs/archive",
-  "issuesDir": "issues",
+  "issuesDir": "specs",
   "maxVerifyCycles": 3,
   "maxReviewCycles": 3,
   "agentTimeoutMs": 7200000,
@@ -27,16 +27,16 @@
   "sandboxNetworkAccess": false,
   "installCmd": "npm install",
   "dependencyFiles": ["package.json", "package-lock.json"],
-  "prdsDir": "docs/prd",
+  "specsDir": "specs",
   "triageLabels": { "readyForAgent": "ready-for-agent", "done": "agent-done" },
   "maxParallelRuns": 1,
   "stages": {
     "review": { "agentCli": "codex", "model": "gpt-5.6-sol", "effort": "xhigh" }
   },
   "projects": {
-    "PRD-006": {
+    "20260913-web": {
       "verifyCmd": "npm run typecheck && npm test -- packages/web",
-      "prd": "PRD-006",
+      "spec": "specs/20260913-web/spec.md",
       "model": "opus-5",
       "effort": "high",
       "env": { "DATABASE_URL": "postgres://localhost/web_fixtures" },

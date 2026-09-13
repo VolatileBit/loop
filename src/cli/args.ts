@@ -12,14 +12,14 @@ import type { ConfigCliOverrides } from '../config/load-config.js';
 import { AGENT_CLIS, type AgentCli, type UsageLimitPolicy } from '../config/types.js';
 import { EFFORT_LEVELS } from '../config/effort.js';
 
-export const SUBCOMMANDS = ['run', 'review', 'fix-nits', 'polish', 'archive', 'goal', 'goals', 'init', 'list-runs', 'completion'] as const;
+export const SUBCOMMANDS = ['run', 'review', 'fix-nits', 'polish', 'archive', 'goal', 'goals', 'init', 'install', 'list-runs', 'completion'] as const;
 export type Subcommand = (typeof SUBCOMMANDS)[number];
 
 export const COMPLETION_SHELLS = ['bash', 'zsh'] as const;
 export type CompletionShell = (typeof COMPLETION_SHELLS)[number];
 
 export type RunFlags = {
-  /** Optional positional: constrain the loop to one feature/PRD project. */
+  /** Optional positional: constrain the loop to one feature/spec project. */
   project: string | null;
   once: boolean;
   dryRun: boolean;
@@ -101,14 +101,20 @@ export type InitFlags = {
   agentCli?: AgentCli;
   verifyCmd?: string;
   issuesDir?: string;
-  prdsDir?: string;
+  specsDir?: string;
   /** Optional projects.<name> entry to add. */
   project?: string;
   projectVerifyCmd?: string;
-  projectPrd?: string;
+  projectSpec?: string;
   quiet: boolean;
   help: boolean;
 };
+
+export const PLANNING_SKILL_TARGETS = ['claudecode', 'codexcli', 'cursor', 'copilot'] as const;
+export type PlanningSkillTarget = (typeof PLANNING_SKILL_TARGETS)[number];
+export type InstallScope = 'project' | 'user';
+export type InstallFlags = { targets: PlanningSkillTarget[]; scope?: InstallScope; interactive: boolean; force: boolean; dryRun: boolean; help: boolean };
+export const INSTALL_FLAG_NAMES = ['--targets', '--scope', '--interactive', '--force', '--dry-run', '--help'] as const;
 
 export type ParsedCli =
   | { command: 'run'; flags: RunFlags }
@@ -119,6 +125,7 @@ export type ParsedCli =
   | { command: 'goal'; flags: GoalFlags }
   | { command: 'goals'; help: boolean }
   | { command: 'init'; flags: InitFlags }
+  | { command: 'install'; flags: InstallFlags }
   | { command: 'list-runs'; help: boolean }
   | { command: 'completion'; shell: CompletionShell | null; help: boolean }
   | { command: '__complete'; words: string[] }
@@ -185,10 +192,10 @@ export const INIT_FLAG_NAMES = [
   '--agent-cli',
   '--verify-cmd',
   '--issues-dir',
-  '--prds-dir',
+  '--specs-dir',
   '--project',
   '--project-verify-cmd',
-  '--project-prd',
+  '--project-spec',
   '--quiet',
   '--help',
 ].sort();
@@ -218,9 +225,14 @@ export const VALUE_FLAGS = new Set([
   '--on-session-limit',
   '--on-weekly-limit',
   '--supersede-limit',
-  '--prds-dir',
+  '--specs-dir',
   '--project',
   '--project-verify-cmd',
+  '--project-spec',
+  '--targets',
+  '--scope',
+  // Accepted input aliases; help and completion advertise only the spec names.
+  '--prds-dir',
   '--project-prd',
 ]);
 
@@ -484,8 +496,8 @@ function parseInitArgs(argv: string[], env: Record<string, string | undefined>):
     } else if (arg === '--issues-dir') {
       flags.issuesDir = requireValue(arg, argv[i + 1]);
       i += 1;
-    } else if (arg === '--prds-dir') {
-      flags.prdsDir = requireValue(arg, argv[i + 1]);
+    } else if (arg === '--specs-dir' || arg === '--prds-dir') {
+      flags.specsDir = requireValue(arg, argv[i + 1]);
       i += 1;
     } else if (arg === '--project') {
       flags.project = requireValue(arg, argv[i + 1]);
@@ -493,8 +505,8 @@ function parseInitArgs(argv: string[], env: Record<string, string | undefined>):
     } else if (arg === '--project-verify-cmd') {
       flags.projectVerifyCmd = requireValue(arg, argv[i + 1]);
       i += 1;
-    } else if (arg === '--project-prd') {
-      flags.projectPrd = requireValue(arg, argv[i + 1]);
+    } else if (arg === '--project-spec' || arg === '--project-prd') {
+      flags.projectSpec = requireValue(arg, argv[i + 1]);
       i += 1;
     } else if (arg === '--quiet') flags.quiet = true;
     else if (arg === '--help' || arg === '-h') flags.help = true;
@@ -503,6 +515,35 @@ function parseInitArgs(argv: string[], env: Record<string, string | undefined>):
     i += 1;
   }
 
+  return flags;
+}
+
+function parseInstallArgs(argv: string[]): InstallFlags {
+  const flags: InstallFlags = { targets: [...PLANNING_SKILL_TARGETS], interactive: false, force: false, dryRun: false, help: false };
+  let bundle: string | null = null;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i]!;
+    if (arg === '--targets') {
+      const targets = requireValue(arg, argv[++i]).split(',').map((target) => target.trim());
+      if (targets.some((target) => !(PLANNING_SKILL_TARGETS as readonly string[]).includes(target))) {
+        throw new Error(`--targets must be a comma-separated list of: ${PLANNING_SKILL_TARGETS.join(', ')}`);
+      }
+      flags.targets = [...new Set(targets)] as PlanningSkillTarget[];
+    } else if (arg === '--scope') {
+      const scope = requireValue(arg, argv[++i]);
+      if (scope !== 'project' && scope !== 'user') throw new Error('--scope must be project or user');
+      flags.scope = scope;
+    } else if (arg === '--interactive') flags.interactive = true;
+    else if (arg === '--force') flags.force = true;
+    else if (arg === '--dry-run') flags.dryRun = true;
+    else if (arg === '--help' || arg === '-h') flags.help = true;
+    else if (arg.startsWith('-')) throw new Error(`Unknown flag for loop install: ${arg}`);
+    else if (bundle === null) bundle = arg;
+    else throw new Error(`Unexpected extra argument for loop install: ${arg}`);
+  }
+  if ((!bundle && !flags.help) || (bundle && bundle !== 'planning-skills')) {
+    throw new Error('Usage: loop install planning-skills [--targets claudecode,codexcli,cursor,copilot]');
+  }
   return flags;
 }
 
@@ -593,6 +634,7 @@ export function parseCliArgs(
     return { command: 'goals', help: rest.includes('--help') || rest.includes('-h') };
   }
   if (first === 'init') return { command: 'init', flags: parseInitArgs(rest, env) };
+  if (first === 'install') return { command: 'install', flags: parseInstallArgs(rest) };
 
   if (first === 'list-runs') {
     return { command: 'list-runs', help: rest.includes('--help') || rest.includes('-h') };

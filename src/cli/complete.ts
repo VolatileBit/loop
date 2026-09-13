@@ -24,6 +24,8 @@ import {
   FLAG_ENUM_VALUES,
   GOAL_FLAG_NAMES,
   INIT_FLAG_NAMES,
+  INSTALL_FLAG_NAMES,
+  PLANNING_SKILL_TARGETS,
   REVIEW_FLAG_NAMES,
   RUN_FLAG_NAMES,
   SUBCOMMANDS,
@@ -43,7 +45,7 @@ function qualifiedIds(root: string): string[] {
   return loadIssues(root).map((issue) => issue.qualifiedId);
 }
 
-/** `PRD-001/issue-01,iss` → keep the committed segments, complete the last one. */
+/** `SPEC-001/issue-01,iss` → keep the committed segments, complete the last one. */
 function completeIdsList(partial: string, root: string): string[] {
   const lastComma = partial.lastIndexOf(',');
   const head = lastComma === -1 ? '' : partial.slice(0, lastComma + 1);
@@ -129,6 +131,17 @@ export function resolveCompletions(words: string[], root: string = resolveRoot()
       sub === 'init'
     ) {
       return completeRunOrReview(sub, prior, partial, root);
+    }
+
+    if (sub === 'install') {
+      if (prior[prior.length - 1] === '--scope') return byPrefix(['project', 'user'], partial);
+      if (prior[prior.length - 1] === '--targets') {
+        const comma = partial.lastIndexOf(',');
+        const prefix = partial.slice(0, comma + 1);
+        return byPrefix(PLANNING_SKILL_TARGETS, partial.slice(comma + 1)).map((target) => prefix + target);
+      }
+      if (partial.startsWith('-')) return byPrefix(INSTALL_FLAG_NAMES, partial);
+      return hasPositional(prior.slice(1)) ? [] : byPrefix(['planning-skills'], partial);
     }
 
     if (sub === 'goals') {

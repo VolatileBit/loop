@@ -56,7 +56,7 @@ import {
   setIssueTriage,
 } from '../issues/lifecycle.js';
 import { clearIssueStage, setIssueStage } from '../issues/resolve-resume-stage.js';
-import { resolveIssuePrd } from '../issues/resolve-prd.js';
+import { resolveIssueSpec } from '../issues/resolve-spec.js';
 import type { IssueRecord } from '../issues/types.js';
 import { formatOutputPrefix } from '../logs/output-prefix.js';
 import { createRunContext, type RunContext } from '../logs/run-context.js';
@@ -201,7 +201,7 @@ export async function runIssuePipeline(
   // inverts, because the dirty tree is the previous run's own unfinished
   // output. Preserving it there means the work can never be committed: each
   // restart re-captures it as "pre-existing", review keeps judging a HEAD that
-  // lacks it, and the finding recurs forever. PRD-011 lost five review rounds
+  // lacks it, and the finding recurs forever. A prior run lost five review rounds
   // to exactly that, on lab files an agent could not commit itself because its
   // sandbox denies `git index.lock`.
   const preExistingDirtyPaths = entry === 'implement' ? listDirtyPaths(cwd) : [];
@@ -209,7 +209,7 @@ export async function runIssuePipeline(
   const promptContext: PromptContext = {
     reviewSkill: config.reviewSkill,
     tddSkill: config.tddSkill,
-    prdRelPath: goal ? null : resolveIssuePrd(issue, config, cwd, root),
+    specRelPath: goal ? null : resolveIssueSpec(issue, config, cwd, root),
     labels: { inProgress: labels.inProgress, done: labels.done },
     // In goal mode there is no pre-known command — the session declares one
     // (the goal block below states the deal for the declared command instead).

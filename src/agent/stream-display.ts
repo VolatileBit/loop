@@ -35,7 +35,7 @@ export type AgentStreamDisplayOptions = {
   enabled?: boolean;
   showThinking?: boolean;
   write?: StreamWriter;
-  /** e.g. "PRD-006/issue-07-implement" — appended to [agent]/[think] prefixes for context. Empty = plain [agent]/[think]. */
+  /** e.g. "SPEC-006/issue-07-implement" — appended to [agent]/[think] prefixes for context. Empty = plain [agent]/[think]. */
   label?: string;
   /** Model requested by the caller, used when the provider's session event omits it. */
   fallbackModel?: string;

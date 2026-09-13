@@ -1,6 +1,6 @@
 /**
  * One review agent session: build the review prompt (config-driven skill +
- * PRD context), run the `review`-stage agent, parse the verdict, and persist
+ * spec context), run the `review`-stage agent, parse the verdict, and persist
  * review artifacts. Provider-agnostic and per-worker (explicit root/cwd).
  */
 
@@ -17,7 +17,7 @@ import type { StageCliFlags } from '../config/stage-settings.js';
 import type { AgentCli, LoopConfig } from '../config/types.js';
 import { resolveIssueReviewFixedPoint } from '../git/fixed-point.js';
 import { isGitRepository } from '../git/status.js';
-import { resolveIssuePrd } from '../issues/resolve-prd.js';
+import { resolveIssueSpec } from '../issues/resolve-spec.js';
 import type { IssueRecord } from '../issues/types.js';
 import { formatRunTimestamp } from '../logs/run-context.js';
 import { badge } from '../logs/style.js';
@@ -99,7 +99,7 @@ export function buildReviewPromptForIssue(
   const fixedPoint = resolveIssueReviewFixedPoint(issue.qualifiedId, options.fixedPoint, options.cwd);
   const context: PromptContext = options.promptContext ?? {
     reviewSkill: options.config.reviewSkill,
-    prdRelPath: resolveIssuePrd(issue, options.config, options.cwd, options.root),
+    specRelPath: resolveIssueSpec(issue, options.config, options.cwd, options.root),
   };
   return buildReviewPrompt(
     issue,

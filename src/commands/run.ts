@@ -35,7 +35,7 @@ import {
   markInProgress,
   setIssueTriage,
 } from '../issues/lifecycle.js';
-import { resolveIssuePrd } from '../issues/resolve-prd.js';
+import { resolveIssueSpec } from '../issues/resolve-spec.js';
 import { clearIssueStage, resolveResumeStage, setIssueStage } from '../issues/resolve-resume-stage.js';
 import {
   buildBlockerIndex,
@@ -269,7 +269,7 @@ export async function runCommand(flags: RunFlags): Promise<never> {
     const promptContext: PromptContext = {
       reviewSkill: config.reviewSkill,
       tddSkill: config.tddSkill,
-      prdRelPath: resolveIssuePrd(next, config, workRoot, root),
+      specRelPath: resolveIssueSpec(next, config, workRoot, root),
       labels: { inProgress: labels.inProgress, done: labels.done },
       verifyCmd: resolveProjectVerifyCmd(config, next.project) ?? verifyCmd,
       // Dry-run stays read-only: show the path only when the file exists.

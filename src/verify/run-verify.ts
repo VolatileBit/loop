@@ -17,7 +17,7 @@ import type { ShellResult } from '../shared/shell.js';
 export type ShellVerifyResult = ShellResult;
 
 export type VerifyProgressOptions = {
-  /** Structured label such as `PRD-011/issue-01-verify`. */
+  /** Structured label such as `SPEC-011/issue-01-verify`. */
   stageLabel?: string;
   /** Progress interval while the command remains active. */
   heartbeatIntervalMs?: number;

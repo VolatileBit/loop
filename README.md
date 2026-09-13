@@ -36,11 +36,17 @@ It runs unattended — overnight, over a weekend, or while you're in meetings.
 
 | | |
 |---|---|
-| **Node.js** | 20 or newer |
+| **Node.js** | 22.13 or newer |
 | **git** | the target directory must be a git repo |
 | **An agent CLI** | at least one of `claude`, `codex`, `cursor`, `copilot` — installed and logged in |
 
 ## Install
+
+```bash
+npm install -g @polyweave/loop
+```
+
+For development from a checkout:
 
 ```bash
 git clone https://github.com/VolatileBit/loop
@@ -67,11 +73,13 @@ From any git repo you want loop to work on:
 loop init
 ```
 
-Asks a few questions (which agent, how to run your tests, where tasks live) and writes `loop.config.json`. It inspects your repo first and suggests answers.
+Asks a few questions (which agent, how to run your tests, where tasks live) and writes `loop.config.json`. It finds issue/spec directories and project slugs that have no registered override, then offers suggested paths you can accept or replace. Existing values, including machine-local project entries, are preserved.
+
+`loop init --no-discovery` skips the optional agent survey while keeping filesystem suggestions. Without a terminal, use explicit flags such as `loop init --verify-cmd "npm test" --issues-dir specs --specs-dir specs --project 20260913-image-previews --project-spec specs/20260913-image-previews/spec.md`.
 
 **2. Write a task**
 
-Create `issues/my-project/issue-01.md`:
+For a new project, init defaults both scan roots to `specs`. Create `specs/20260913-my-project/issues/issue-01.md` (use the project creation date):
 
 ```markdown
 ---
@@ -133,7 +141,8 @@ Everything is also written to `.loop/logs/`, so closing the terminal loses nothi
 | `loop polish <project>` | Wrap up a project: clear nits, write up what was learned |
 | `loop archive <project>` | Retire a finished project into a dated folder |
 | `loop list-runs` | Show past runs |
-| `loop init` | Guided setup |
+| `loop init` | Discover planning paths and unregistered projects; guided setup |
+| `loop install planning-skills` | Install the planning bundle for local coding agents through rulesync |
 | `loop completion zsh` | Tab completion (`bash` also supported) |
 
 Add `--help` to any of them for the full flag list.
@@ -146,7 +155,7 @@ Hitting a usage limit doesn't end the run. By default loop waits for the reset, 
 17:42:10 [loop] usage limit (session) hit — waiting until 6/8/2026, 9:00:00 PM
                 for the reset, then resuming. The machine is kept awake for the
                 wait. Press ESC to stop instead.
-17:42:10 [loop] PRD-006/issue-12 paused on the usage limit — it will be
+17:42:10 [loop] SPEC-006/issue-12 paused on the usage limit — it will be
                 re-claimed after the reset.
 21:01:12 [12|implement] starting claude-code session (model=claude-opus-5)
 ```
@@ -183,7 +192,7 @@ Stopped tasks keep a checkpoint. The next `loop run` picks them up where they le
 
 ## Writing tasks
 
-Tasks are markdown files in `issues/<project>/`. One folder per unit of work — a feature, a refactor, a `hotfixes` bucket.
+Planning tasks live in `specs/<YYYYMMDD>-<project-slug>/issues/`, beside `spec.md` and an optional `map/`. The full dated folder name is the Loop project ID. Existing `issues/<project>/` layouts remain supported. Each project represents one unit of work — a feature, a refactor, or a maintenance backlog.
 
 ```markdown
 ---
@@ -209,6 +218,73 @@ triage: ready
 | `triage` | Current state — `ready` means loop may pick it up |
 | `## Blocked by` | Won't start until those tasks are done |
 | `## Acceptance criteria` | What "done" means |
+
+### Plan with skills
+
+Run this to choose installation for the current project or your user account:
+
+```bash
+loop install planning-skills
+# Or select agents:
+loop install planning-skills --scope user --targets claudecode,codexcli
+# Install only for the current project without prompting:
+loop install planning-skills --scope project
+```
+
+Loop includes a pinned [rulesync](https://github.com/dyoshikawa/rulesync) dependency and calls its generation API; no separate rulesync installation is needed. The six planning skills are `grilling`, `grill-with-docs`, `domain-modeling`, `wayfinder`, `to-spec`, and `to-issues`.
+
+| Target | Project destination | User destination |
+|---|---|---|
+| `claudecode` | `.claude/skills/` | `~/.claude/skills/` |
+| `codexcli` | `.agents/skills/` | `~/.agents/skills/` |
+| `cursor` | `.cursor/skills/` | `~/.cursor/skills/` |
+| `copilot` | `.github/skills/` | `~/.copilot/skills/` |
+
+All four agents are selected by default. In a terminal, omitting `--scope` asks where to install, with project as the default. Without a terminal it defaults to project; scripts can select either scope explicitly. `--interactive` enables the prompt with piped input. User scope uses your home directory and does not require a project.
+
+`--dry-run` previews absolute destination paths after generation in a temporary directory. Identical files are skipped; differing files stop the entire installation before destination writes. Use `--force` to overwrite those files after reviewing them. Extra files are preserved, symlink destinations are refused, and existing rulesync configuration is not changed or used. These protections apply to both scopes. Re-run the installer after updating Loop to refresh the skills.
+
+Use `to-spec` to capture an agreed plan, then `to-issues` to create independently verifiable slices. The default planning layout is:
+
+```text
+specs/20260913-image-previews/
+  spec.md
+  issues/
+    01-upload.md
+    02-preview.md
+  map/                        # optional planning decisions
+```
+
+Each issue has `id`, `title`, `triage`, and a repository-relative `spec` link in frontmatter:
+
+```markdown
+---
+id: 02-preview
+title: Generate an image preview
+triage: ready
+spec: specs/20260913-image-previews/spec.md
+---
+
+## Blocked by
+
+- 01-upload
+
+## Acceptance criteria
+
+- [ ] The upload integration test proves a supported image produces a preview.
+```
+
+Use full dependency IDs or filename stems; Loop does not match numeric prefixes. A `Status:` line or a title heading does not replace frontmatter. Skills honor configured `triageLabels`; defaults are `ready` for agent work and `delegated` for human-owned work. Dependencies on human work wait until its `triage` is `done`. A backlog consisting only of delegated work is settled for Loop, while those tasks remain with their human owners.
+
+Use the local creation date in `YYYYMMDD` form and reuse that dated folder when continuing the same effort. Here, the Loop project ID is `20260913-image-previews`, including the date; the nested directory name `issues` is not the project ID.
+
+For the default layout, configure `"issuesDir": "specs"` and `"specsDir": "specs"`. These are scan roots containing project folders, not a single project's `issues/` directory. A custom root such as `planning/features` can contain the same dated project structure; choose it for both settings in init. Explicit existing roots and older `issues/<project>/*.md` layouts are preserved. Loop's legacy runtime fallback remains `issues` for configurations that omit `issuesDir`; new init configurations write `specs` explicitly.
+
+Specs can live elsewhere via an issue's `spec` field or `projects.<project-id>.spec`. Without either override, `specsDir` supports `<project-id>/spec.md` or a matching flat Markdown filename. Ambiguous implicit matches require an explicit `spec` pointer.
+
+Older `prdsDir` and `projects.<project-id>.prd` config keys, `prd` issue frontmatter, and the `--prds-dir`/`--project-prd` init flags remain accepted as input aliases. New config, issue templates, help, and prompts use spec terminology. Within one config file or issue, the new key wins when both names exist; machine-local config still overrides tracked config. Running `loop init` rewrites old keys in the tracked config using the new names while preserving their values. Existing folders and issue files are not renamed.
+
+Run `loop init` to review discovered dated projects and paths, then `loop run 20260913-image-previews --dry-run`. Project entries are optional overrides: Loop discovers issues under its configured root. In a planning project with an `issues/` container, sibling specs and maps are excluded from execution. Agreed test boundaries belong in the spec's `## Testing Decisions` section; unresolved consequential decisions keep dependent work out of `ready`. Archiving this layout preserves the whole project folder under the archive's `planning/` directory, including its spec, issues, and map.
 
 ### Task states
 
@@ -325,7 +401,7 @@ Different test commands for different parts of a monorepo:
 {
   "verifyCmd": "pnpm verify",
   "projects": {
-    "PRD-006": { "verifyCmd": "pnpm --filter @org/web run verify", "prd": "docs/prd/PRD-006-web.md" },
+    "SPEC-006": { "verifyCmd": "pnpm --filter @org/web run verify", "spec": "docs/specs/SPEC-006-web.md" },
     "hotfixes": { "verifyCmd": "pnpm test" }
   }
 }
@@ -482,6 +558,14 @@ npm run test:e2e  # drives the real agent CLIs — spends real quota
 ```
 
 `LOOP_E2E_CLIS=claude-code,codex npm run test:e2e` narrows the matrix.
+
+Maintained skill sources live in `src/skills/`:
+
+- `planning/`: the six pre-loop skills installed by `loop install planning-skills`. The shared format reference is `planning/to-spec/references/loop-planning.md`.
+- `runtime/`: TDD, code review, and handoff Markdown loaded directly by the runtime wrappers and prompt builder. These are the single source of the built-in guidance; preserve Loop's verdict and handoff block protocols.
+- `explaining/`: the junior-engineer and layperson explanation skills, with fictional generic examples.
+
+All three directories ship with `src` in the npm package. `skill-bundles/` is a gitignored local import directory; Loop does not load, install, or package skills from it.
 
 ## License
 
